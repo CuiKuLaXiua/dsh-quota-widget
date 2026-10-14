@@ -11,6 +11,16 @@ DeepSeek Harness (DSH) 标准插件 — **Opencode / DeepSeek / R4Coder 额度 +
 
 完整配置在「设置 → Opencode 额度」中完成。
 
+## 目录
+
+- [特性](#特性)
+- [安装](#安装)
+- [配置说明](#配置说明)
+- [数据链路与隐私](#数据链路与隐私)
+- [开发](#开发)
+- [发布（维护者）](#发布维护者)
+- [License](#license)
+
 ## 特性
 
 - **常驻悬浮小窗**：可拖拽、位置持久化、迷你态/收起态
@@ -33,9 +43,17 @@ dsh plugin --profile web add dsh-quota-widget
 
 ### 桌面版
 
-1. 打开桌面端 → 侧边栏 **Plugins / 插件** 页
-2. 安装来源填 `dsh-quota-widget`（若尚未发布到 npm，则填本地 tarball 的 `file:` 路径）
-3. 按提示重启桌面端生效
+在桌面端 **Plugins / 插件** 页的安装来源中使用 GitHub 源命令安装：
+
+```sh
+github:CuiKuLaXiua/dsh-quota-widget
+```
+
+具体步骤：
+
+1. 打开桌面端 → 侧边栏 **Plugins / 插件** 页；
+2. 在安装来源输入框粘贴 `github:CuiKuLaXiua/dsh-quota-widget`；
+3. 点击安装并重启桌面端，生效后右下角出现悬浮小窗。
 
 > 本插件是 bundle 型包（声明了 `dsh.bundle.patch`），`dsh plugin add` 会自动把它加进
 > profile 的 `dsh.profile.bundles` 并应用 `cordis.patch.yml`，**不需要手工加 loader 行**。
@@ -52,9 +70,18 @@ dsh plugin --profile web add dsh-quota-widget
 
 ## 数据链路与隐私
 
-- Host 端代理各提供商额度接口，Token 只走请求头，**不写入 URL query**；
-- TokenMeter 用量账本仅保存在本机 `$DSH_HOME/storages/token-meter.db`；
-- 所有 HTTP 端点仅接受本机回环访问（防 DNS rebinding）。
+### 数据链路
+
+- **Token 只走请求头**：Host 端代理各提供商额度接口，Token 通过 `Authorization` / `x-api-key` 请求头传递，**不写入 URL query、不写入日志、不写入数据库**；Host 端不持久化 Token，每次请求转发后即丢弃；
+- **TokenMeter 账本**：仅保存在本机 `$DSH_HOME/storages/token-meter.db`（90 天保留），只记录模型名、token 计数、时间等用量元数据，**不记录对话内容**；
+- **本地回环防护**：所有 HTTP 端点仅接受 `127.0.0.1` / `localhost` / `::1` 回环访问，并校验 `Sec-Fetch-Site`，防 DNS rebinding 与跨站读取；
+- **上游主机白名单**：Opencode / DeepSeek 的 baseUrl 仅允许官方域名（`opencode.ai`、`api.opencode.ai`、`api.deepseek.com`）且强制 HTTPS，非白名单配置会自动回退官方端点。
+
+### 风险提示（请知悉）
+
+- **API Key 明文保存在浏览器 localStorage**：Opencode / DeepSeek / R4Coder 的 Token 以明文 JSON 保存在浏览器 localStorage（键 `opencode_quota_config`），以便下次打开自动使用。任何能在 DSH 页面同源下执行的脚本（如 XSS、恶意插件）或本机恶意软件均可读取，**建议仅在可信设备上使用**；
+- **R4Coder 使用自定义 host**：R4Coder 的 Token 会发送到你配置的 `Base URL`。出于兼容自部署/第三方聚合服务的考虑，该地址**只强制 HTTPS、不设域名白名单**，**请只填写可信的 R4Coder 服务地址**；
+- **外部 CDN 依赖（GSAP）**：部分动画（热力图、tooltip 等）会从 `cdn.jsdelivr.net` 动态加载 GSAP 脚本。它仅用于增强动画效果，加载失败时自动降级为纯 CSS / 原生动画，不影响功能；但该脚本会在 DSH 页面上下文中执行，存在供应链风险，若环境禁止外部 CDN 仍可正常使用（仅动画降级）。
 
 ## 开发
 

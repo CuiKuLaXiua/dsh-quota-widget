@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
+  "icon": "./icon.svg",
   "author": "dsh-quota-widget contributors",
   "repository": {
     "type": "git",
