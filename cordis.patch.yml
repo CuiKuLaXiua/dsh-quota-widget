@@ -1,0 +1,4 @@
+# dsh-quota-widget bundle patch — 小窗口额度查询
+- insert:
+    - id: dsh-quota-widget
+      name: 'dsh-quota-widget'

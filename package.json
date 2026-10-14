@@ -1,0 +1,54 @@
+{
+  "name": "dsh-quota-widget",
+  "version": "0.1.0",
+  "description": "用量小窗 · Token / 额度悬浮窗（Opencode · DeepSeek · R4Coder · TokenMeter 聚合）",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "author": "dsh-quota-widget contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CuiKuLaXiua/dsh-quota-widget.git"
+  },
+  "homepage": "https://github.com/CuiKuLaXiua/dsh-quota-widget#readme",
+  "bugs": {
+    "url": "https://github.com/CuiKuLaXiua/dsh-quota-widget/issues"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "locale",
+    "README.md",
+    "icon.svg"
+  ],
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "opencode",
+    "quota",
+    "token-meter"
+  ]
+}

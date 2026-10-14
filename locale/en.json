@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "额度查询小窗 (dsh-quota-widget)",
+    "description": "Floating quota widget aggregating Opencode / DeepSeek / R4Coder balances and TokenMeter usage."
+  }
+}
