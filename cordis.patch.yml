@@ -1,4 +1,4 @@
-# dsh-quota-widget bundle patch — 小窗口额度查询
+# dsh-quota-widget bundle patch — 用量与额度小窗（Token 用量统计 + 各源额度）
 - insert:
     - id: dsh-quota-widget
       name: 'dsh-quota-widget'

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "额度查询小窗 (dsh-quota-widget)",
+    "title": "用量与额度小窗 (dsh-quota-widget)",
     "description": "常驻悬浮小窗，聚合 Opencode / DeepSeek / R4Coder 额度与 TokenMeter 用量统计。"
   }
 }
