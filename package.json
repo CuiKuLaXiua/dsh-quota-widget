@@ -5,6 +5,10 @@
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
+  "scripts": {
+    "check": "node --check lib/index.js && node --check lib/client.js",
+    "test": "node --test"
+  },
   "icon": "./icon.svg",
   "author": "dsh-quota-widget contributors",
   "repository": {

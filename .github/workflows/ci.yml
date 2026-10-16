@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      # host 单测用 node:sqlite（Node 22.5+ 内置），因此不需要安装任何依赖
+      - name: syntax check
+        run: npm run check
+      - name: unit tests
+        run: npm test
