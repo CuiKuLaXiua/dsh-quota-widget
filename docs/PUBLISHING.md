@@ -1,5 +1,22 @@
 # 发布指南
 
+## 0. 两种分发形态（都不需要构建/打包）
+
+`dsh plugin` 本质是 pnpm 的转发壳（"thin pnpm forwarder": 在 profile 目录里跑 `pnpm <args>` 再
+reconcile `dsh.profile.bundles`），registry 名 / `github:` / `git+https:` / tarball / 本地路径都直通 pnpm。
+
+| 形态 | 用户安装命令 | 版本由谁决定 |
+|---|---|---|
+| GitHub 源 | `dsh plugin --profile web add github:CuiKuLaXiua/dsh-quota-widget` | 默认分支 HEAD；可用 `#v0.1.0` 固定到 tag |
+| npm 源 | `dsh plugin --profile web add dsh-quota-widget` | `package.json` 的 `version`（需先 `npm publish`） |
+
+本包**无 `prepare`/`build`/`postinstall` 脚本**、无 dependencies/devDependencies，`lib/*.js` 就是产物，
+所以：`git push` 之后别人**立刻**能用 `github:` 源装到（不需要先打包、也不需要 `pnpm-workspace.yaml`
+里加 `allowBuilds` 放行构建）。`npm pack` 的结果就是安装内容（9 个文件 / 约 72 kB）。
+
+发版流程：改 `package.json` 的 `version` → `git tag vX.Y.Z` → push（tag 与 version 保持一致，
+两条安装路径才不会指向不同代码）。
+
 ## 1. 发布到 npm
 
 ```sh

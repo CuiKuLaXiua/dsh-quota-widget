@@ -1,7 +1,7 @@
 # dsh-quota-widget 优化执行计划（已核对版）
 
 - 生成日期：2026-10-16
-- 状态：**待审批**（审批前不执行任何改动）
+- 状态：**已执行（A/B/C/D + E1）**，执行记录见文末 §7
 - 依据：逐项对照源码 + 对本机运行中实例（`127.0.0.1:19387`）的实测
 - 本文件取代此前的口述草案：每条都做了"是否必要 / 判断是否有误"的核对，结论见 §1
 
@@ -124,3 +124,38 @@
 3. 批次 C 的 C1 会删约 85 行，是否同意（需逐视图回归）？
 4. 批次 D 的测试范围是否够（要不要把"1d 分时图过滤"也纳入回归用例）？
 5. 每批是否需要我同步到 profile 让你重启验证（还是只改仓库、你自己决定何时同步）？
+
+## 7. 执行记录（2026-10-16）
+
+### 已执行
+
+| 批次 | 项 | 落地内容 | 验证 |
+|---|---|---|---|
+| A | A1 | `step/end` 补 `live.firstChunk.delete(key)` | `node --check` |
+| A | A2 = F1 | host：`hydrateHourlyBuckets(db, now)` 只回填 `HOURLY_KEEP_MS`(2 天)；client：抽 `groupTodayHourBuckets()` 并只渲染今天 | **实测旧 host 的 79 桶/59 列 → 过滤后 2 列**；单测覆盖 |
+| A | A3 | 响应新增 `store`；设置页新增 `meterStoreHint()` 显示「存储：SQLite / 内存（不持久化）」 | 单测（`resolveDbPath`）+ 待重启目视 |
+| A | A4 | `tmPullInFlight` 在飞守卫（`reload(silent,force)` 透传、手动刷新/切区间/配置变更 `force`）+ `tmFetchInit()` 统一 30s 超时 | `node --check`、单测 |
+| B | B1 | `scanHistory` 块内 4 路并发（`SCAN_CONCURRENCY`，块间保持 90d 边界语义、结果按序摄入）+ 会话级跳过（`header.updatedAt` 毫秒 epoch 且 ≤ 水位线）+ `scanned/skipped/ingested/耗时` 打点 | 语法 + 单测（水位线语义不变） |
+| B | B2 | 删 `?meta=live` 分支与 client `mergeLive()` | 残留检查为空 |
+| B | B3 | client 记忆 `version`/`range`，无变化跳过 `setState` | `node --check` |
+| C | C1 | 删 host `today`/`byModel`/`totalsLegacy`/`hourlyLegacy` 与 client 旧兜底、`byModel` 归一化（保留 `hourly`） | 残留检查为空 |
+| C | C2 | 删 `meta.last_seen_seq` seed；修正 `events.raw` 过期注释 | 语法 |
+| D | D1 | 新增 `test/host.test.mjs`（14 条）+ `test/client.test.mjs`（7 条）+ `test/load-client.mjs` 加载器；两端各加 `__testing` 出口 | **21/21 通过** |
+| D | D2 | `package.json` 加 `check`/`test` 脚本；`.github/workflows/ci.yml`（Node 24，零依赖） | `npm run check && npm test` 通过 |
+| E | E1 | `docs/DEVELOPMENT.md` 补「数据链路 / 存储与降级 / 就绪语义与超时约束 / 测试」 | 人工复核 |
+
+### 按计划未做（附原因）
+
+- **B4 `seenSeq` 裁剪**：计划中即为可选项；§2.2 已论证不可删（守"代际重置后旧事件被重新接受"），
+  实测 26,850 条仅几 MB，暂不动。
+- **E2 host 文件内分层**：纯重构、无行为收益；已完成 D（有测试兜底）后可随时再做，本轮不做。
+- **E3 探测 `record.header` 字段**：改为"运行时自证"——B1 的会话级跳过带 `>1e12` 安全护栏，
+  并在日志输出 `skipped=N`：若该字段不存在则恒为 0，一眼可见（无需再临时打日志）。
+- **E4 i18n / E5 存储与回填官方化**：按计划分别为"发布前再说"与"不主动做"。
+
+### 待你决定
+
+- 是否把本轮改动同步到 `~/.dsh/profiles/desktop/node_modules/dsh-quota-widget`（重启后即可验证
+  F1 分时图、存储状态提示与新日志打点）。
+- 是否 git 提交（本轮未提交）。
+

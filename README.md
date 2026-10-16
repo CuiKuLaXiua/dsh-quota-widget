@@ -36,10 +36,14 @@ DeepSeek Harness (DSH) 标准插件 — **Opencode / DeepSeek / R4Coder 额度 +
 ### Web 版
 
 ```sh
-dsh plugin --profile web add dsh-quota-widget
+dsh plugin --profile web add github:CuiKuLaXiua/dsh-quota-widget
 ```
 
-重启 dsh 服务后，右下角出现悬浮小窗；配置入口在「设置 → Opencode 额度」。
+重启 dsh 服务后，右下角出现悬浮小窗；配置入口在「设置 → 用量与额度」。
+
+> 本包**尚未发布到 npm registry**（`npm view dsh-quota-widget` 会 404），因此统一用 `github:` 源。
+> `dsh plugin` 本身是 pnpm 的转发壳（registry 名 / `github:` / `git+https:` / tarball / 本地路径都直通 pnpm），
+> 若日后发布到 npm，可简写为 `dsh plugin --profile web add dsh-quota-widget`。
 
 ### 桌面版
 
@@ -48,6 +52,10 @@ dsh plugin --profile web add dsh-quota-widget
 ```sh
 github:CuiKuLaXiua/dsh-quota-widget
 ```
+
+> git 源默认取仓库默认分支（`main`）的最新提交；要固定版本，先给仓库打 tag 再写
+> `github:CuiKuLaXiua/dsh-quota-widget#v0.1.0`。本包无 `prepare`/`build` 脚本，
+> 安装时 pnpm 不需要放行构建（无 `allowBuilds` 配置步骤）。
 
 具体步骤：
 
@@ -86,10 +94,13 @@ github:CuiKuLaXiua/dsh-quota-widget
 ## 开发
 
 ```sh
-npm install        # 无运行时依赖，仅开发工具
+npm run check      # 两个 bundle 的语法检查
+npm test           # node:test 单测（零依赖，node:sqlite 用 Node 内置）
 npm pack           # 打包检查
 ```
 
+- **无构建步骤**：仓库里的 `lib/*.js` 就是产物（宿主端手写 Node ESM、浏览器端手写单文件 bundle），
+  `npm pack` 出的 9 个文件即安装包，push 到 GitHub 后 `github:` 源可直接安装，无需先打包再推代码；
 - 宿主端 `lib/index.js`：纯 Node ESM，基于 `webServer` 注册同源 JSON 路由；
 - 浏览器端 `lib/client.js`：按 DSH 模块加载器格式手写单文件 bundle；
 - 本地安装测试：`dsh plugin --profile web add file:<本目录>`。
