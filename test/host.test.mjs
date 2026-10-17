@@ -444,3 +444,101 @@ test("dbHealthSnapshot：无库时降级为 memory 且不抛异常", () => {
   assert.equal(h.events, null);
 });
 
+// ===== v5 新增：会话 / 时段 / 可靠性 =====
+
+test("computeUsage：totals.days / prevTotals.days 给出窗口内的覆盖天数（环比按日均的前置）", () => {
+  resetUsage();
+  seedDay(dayKeyAt(0), "m-a", 10, 1);
+  seedDay(dayKeyAt(1), "m-a", 10, 1);
+  seedDay(dayKeyAt(2), "m-a", 10, 1);
+  seedDay(dayKeyAt(8), "m-a", 30, 3); // 上一窗口只覆盖 1 天
+  const s = T.computeUsage("7d");
+  assert.equal(s.totals.days, 3);
+  assert.equal(s.prevTotals.days, 1);
+});
+
+test("computeUsage：sessions 按会话聚合，并带上标题/项目（标题来自 session/title 事件）", () => {
+  T.resetUsage();
+  T.noteProject("s-a", "D:\\code\\demo");
+  const t = Date.now();
+  T.ingestEvent("s-a", { type: "session/title", seq: 1, time: t, data: { title: "重构弹窗" } });
+  T.ingestEvent("s-a", { type: "assistant/message", seq: 2, time: t, data: { turn: 1, step: 1, message: { source: { provider: "unisound", model: "u2-flash" } }, usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 900 } } });
+  T.ingestEvent("s-b", { type: "assistant/message", seq: 3, time: t, data: { turn: 1, step: 1, message: { source: { provider: "unisound", model: "u2-flash" } }, usage: { inputTokens: 10, outputTokens: 1, cacheReadTokens: 0 } } });
+  const s = T.computeUsage("1d");
+  assert.equal(s.sessions.length, 2);
+  assert.equal(s.sessions[0].sessionId, "s-a");
+  assert.equal(s.sessions[0].title, "重构弹窗");
+  assert.equal(s.sessions[0].project, "demo");
+  assert.equal(s.sessions[0].total, 1010); // 新输入 100 + 输出 10 + 缓存读 900
+  T.sessionMeta.clear();
+  T.sessionTitles.clear();
+  T.resetUsage();
+});
+
+test("computeUsage：hours 是 7×24 矩阵，按本地星期/小时累计", () => {
+  T.resetUsage();
+  const t = new Date(2026, 9, 17, 15, 30).getTime(); // 本地 2026-10-17 15:30（周六）
+  T.ingestEvent("s1", { type: "assistant/message", seq: 1, time: t, data: { turn: 1, step: 1, message: { source: { model: "m", provider: "p" } }, usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 0 } } });
+  const s = T.computeUsage("1d");
+  assert.equal(s.hours.length, 7);
+  assert.equal(s.hours[0].length, 24);
+  assert.equal(s.hours[6][15], 110, "周六 15 点应为 100+10");
+  const sum = s.hours.reduce((a, row) => a + row.reduce((x, y) => x + y, 0), 0);
+  assert.equal(sum, 110);
+  T.resetUsage();
+});
+
+test("ingestEvent：可靠性三类事件进 perRelDay/perRetryDay，并可被 daily_reliability 重建", () => {
+  T.resetUsage();
+  const t = Date.now();
+  T.ingestEvent("s1", { type: "llm/retry", seq: 1, time: t, data: { failure: { code: "TRANSPORT" } } });
+  T.ingestEvent("s1", { type: "llm/retry", seq: 2, time: t, data: { failure: { code: "TIMEOUT" } } });
+  T.ingestEvent("s1", { type: "compaction/end", seq: 3, time: t, data: {} });
+  T.ingestEvent("s1", { type: "command/done", seq: 4, time: t, data: { kind: "success", text: "Compacted 572 history items (~420,528 tokens)." } });
+  const rel = T.computeUsage("1d").reliability;
+  assert.equal(rel.since, "range");
+  assert.equal(rel.retries, 2);
+  assert.equal(rel.compactions, 1);
+  assert.equal(rel.compactedTokens, 420528);
+  assert.deepEqual(rel.retryCodes.map((x) => x.code).sort(), ["TIMEOUT", "TRANSPORT"]);
+  T.resetUsage();
+});
+
+test("rebuildSession/Hour/ReliabilityPartitions：从 events 幂等重建", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(T.SCHEMA_DDL);
+  const now = Date.now();
+  const day = T.dayKeyOf(now);
+  const hour = new Date(now).getHours();
+  const ins = db.prepare("INSERT INTO events(seq,time,day,session_id,model,input,output,cache_read,cache_write,type,raw,project,tool,ms,provider,err,num) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+  ins.run(1, now, day, "s1", "m", 100, 10, 900, 0, "assistant/message", null, "demo", null, 500, "unisound", 0, 0);
+  ins.run(2, now, day, "s1", "__system", 0, 0, 0, 0, "tool/result", null, "demo", "read", 20, null, 1, 0);
+  ins.run(3, now, day, "s1", "__system", 0, 0, 0, 0, "turn/end", null, "demo", null, 0, null, 1, 0);
+  ins.run(4, now, day, "s1", "__system", 0, 0, 0, 0, "llm/retry", "TRANSPORT", "demo", null, 0, null, 0, 0);
+  ins.run(5, now, day, "s1", "__system", 0, 0, 0, 0, "compaction/end", null, "demo", null, 0, null, 0, 0);
+  ins.run(6, now, day, "s1", "__system", 0, 0, 0, 0, "command/done", null, "demo", null, 0, null, 0, 420528);
+  T.rebuildSessionPartitions(db, now);
+  T.rebuildHourPartitions(db, now);
+  T.rebuildReliabilityPartitions(db, now);
+  T.rebuildReliabilityPartitions(db, now); // 再跑一次：结果必须不变
+  const sess = db.prepare("SELECT session_id, requests, input, cache_read, tools, turns FROM daily_session").all();
+  assert.equal(sess.length, 1);
+  assert.equal(sess[0].requests, 1);
+  assert.equal(sess[0].tools, 1);
+  assert.equal(sess[0].turns, 1);
+  const hrs = db.prepare("SELECT hour, requests FROM daily_hour").all();
+  assert.equal(hrs.length, 1);
+  assert.equal(Number(hrs[0].hour), hour);
+  const rel = db.prepare("SELECT retries, compactions, compacted_tokens, errors, tool_errors FROM daily_reliability").all();
+  assert.equal(rel.length, 1);
+  assert.equal(rel[0].retries, 1);
+  assert.equal(rel[0].compactions, 1);
+  assert.equal(rel[0].compacted_tokens, 420528);
+  assert.equal(rel[0].errors, 1);
+  assert.equal(rel[0].tool_errors, 1);
+  const codes = db.prepare("SELECT code, n FROM daily_retry").all();
+  assert.equal(codes.length, 1);
+  assert.equal(codes[0].code, "TRANSPORT");
+  db.close();
+});
+
