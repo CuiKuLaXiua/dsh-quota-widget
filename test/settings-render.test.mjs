@@ -50,6 +50,9 @@ function payload(range) {
     tools: [{ tool: "read", calls: 12, ms: 300, avgMs: 25 }, { tool: "pwsh", calls: 8, ms: 9000, avgMs: 1125 }],
     projects: [{ project: "token-lens", requests: 9, freshInput: 300, output: 200, cacheRead: 2900, tools: 4, total: 3400 }],
     providers: [{ provider: "unisound", requests: 20, freshInput: 900, output: 700, cacheRead: 13000, total: 14600 }],
+    sessions: [{ sessionId: "session-8d0dd9a4-ba12", title: "重构弹窗", project: "token-lens", requests: 9, freshInput: 300, output: 200, cacheRead: 2900, tools: 4, turns: 3, steps: 9, total: 3400 }],
+    hours: Array.from({ length: 7 }, (_, d) => Array.from({ length: 24 }, (_, h) => (d === 5 && h === 17 ? 1000 : d + h))),
+    prevDaily: [dayKey(3), dayKey(2), dayKey(1)].map((date, i) => ({ date, total: 700 * (i + 1), prompt: 600, completion: 100, cache_read: 500, requests: 2, tools: 1, turns: 1, steps: 2, models: [] })),
     reliability: { since: "start", retries: 1, retryCodes: [{ code: "TRANSPORT", n: 1 }], compactions: 1, errors: 2, toolErrors: 3 },
     live: { turns: 3, steps: 12, llmMs: 40000, toolMs: 10000, toolCalls: 20, firstTokenMs: 0, firstTokenCount: 0, tokPerSec: 25, rate60: 1.5, rate60Tokens: 90, rate60WindowSec: 60, msgs: 5, signalCount: { "assistant/chunk": 12 }, outputTokens: 1000 },
     health: { store: "db:/tmp/token-meter.db", dbBytes: 3829760, events: 15251, days: 37, lastScanAt: now - 5000 },
@@ -146,6 +149,29 @@ async function setup({ localStorageSeed = {}, fetchPayload } = {}) {
   return { panel, reset, store, calls };
 }
 
+/** 收集 className 含 needle 且带 onClick 的元素（用于"真的点一下"的回归测试） */
+function findClickable(node, needle, out = []) {
+  if (!node || typeof node !== "object") return out;
+  if (Array.isArray(node)) { node.forEach((n) => findClickable(n, needle, out)); return out; }
+  if (node.props) {
+    const cn = String(node.props.className || "");
+    if (typeof node.props.onClick === "function" && cn.includes(needle)) out.push(node);
+    findClickable(node.props.children, needle, out);
+  }
+  return out;
+}
+
+/** 收集所有元素的 title（tooltip）文本，用于断言"说明文字不该出现在正文里" */
+function collectTitles(node, out = []) {
+  if (!node || typeof node !== "object") return out;
+  if (Array.isArray(node)) { node.forEach((n) => collectTitles(n, out)); return out; }
+  if (node.props) {
+    if (typeof node.props.title === "string") out.push(node.props.title);
+    collectTitles(node.props.children, out);
+  }
+  return out;
+}
+
 async function renderTwice(panel, reset) {
   reset();
   panel();                       // 首次渲染：挂载 effect + 触发拉取
@@ -158,15 +184,45 @@ test("设置页渲染冒烟：有数据时全部分支可渲染，且包含新�
   const { panel, reset } = await setup({ localStorageSeed: { opencode_quota_range: "30d" } });
   const tree = await renderTwice(panel, reset);
   const text = collectText(tree).join(" | ");
-  for (const kw of ["总览", "缓存命中率", "新输入", "缓存读", "环比" in {} ? "" : "步数", "模型排行", "工具排行", "项目排行", "按渠道", "实时", "最近调用", "数据："]) {
-    if (!kw) continue;
+  for (const kw of ["总览", "缓存命中率", "新输入", "缓存读", "步数", "排行", "模型", "会话", "工具", "项目", "渠道", "实时", "最近调用", "诊断"]) {
     assert.ok(text.includes(kw), "渲染结果缺少文案「" + kw + "」");
   }
-  assert.ok(text.includes("read"), "工具排行应出现工具名 read");
-  assert.ok(text.includes("token-lens"), "项目排行应出现项目名");
-  assert.ok(text.includes("unisound"), "按渠道应出现 provider 名");
-  assert.ok(text.includes("近60秒速率"), "实时卡应显示窗口速率");
-  assert.ok(text.includes("样本 0 次") || text.includes("无样本"), "首 token 无样本时应明示，而不是只显示 —");
+  assert.ok(text.includes("u2-flash"), "模型排行应出现模型名");
+  assert.ok(text.includes("每步") || text.includes("无样本"), "每步耗时/首 token 应有明确说明");
+  // 回归：miniChip 的 (key,label,val,extra,tip) 参数位写错会把整段口径说明渲染进正文
+  assert.ok(!text.includes("窗口内输出"), "实时速率的口径说明不应出现在 chip 正文里");
+  assert.ok(collectTitles(tree).some((t) => t.includes("窗口内输出")), "口径说明应作为 tooltip 存在");
+  // 回归：命中率必须真有数值（payload 给了 95）
+  assert.ok(text.includes("缓存命中率") && text.includes("95%"), "缓存命中率应以百分比展示");
+  // 环比：上一窗口只有 3 天数据 → 必须走"上期覆盖不足"分支，而不是给出 +700% 的假信号
+  assert.ok(text.includes("上期覆盖") || text.includes("环比 —"), "覆盖不足时应提示，而不是显示失真的百分比");
+});
+
+test("设置页渲染冒烟：排行的五个维度都能渲染（分段切换）", async () => {
+  const expect = {
+    models: "u2-flash",
+    sessions: "重构弹窗",
+    tools: "read",
+    projects: "token-lens",
+    providers: "unisound",
+  };
+  for (const [tab, kw] of Object.entries(expect)) {
+    const { panel, reset } = await setup({ localStorageSeed: { oq_rank_tab: tab, opencode_quota_range: "30d" } });
+    const tree = await renderTwice(panel, reset);
+    const text = collectText(tree).join(" | ");
+    assert.ok(text.includes(kw), tab + " 维度应渲染出「" + kw + "」");
+  }
+});
+
+test("设置页渲染冒烟：时段热力图 / 热力图月份切换 / 折线上期对比都能渲染", async () => {
+  for (const chart of ["hour", "heat", "line"]) {
+    const { panel, reset } = await setup({ localStorageSeed: { oq_settings_chart: chart, opencode_quota_range: "30d" } });
+    const tree = await renderTwice(panel, reset);
+    const text = collectText(tree).join(" | ");
+    if (chart === "hour") assert.ok(text.includes("时段分布") && text.includes("峰值"), "时段视图应有标题与峰值");
+    if (chart === "heat") assert.ok(text.includes("回到本月") || text.includes("年 "), "热力图应显示月份");
+    if (chart === "line") assert.ok(text.includes("缓存命中率"), "折线视图应有命中率曲线图例");
+  }
 });
 
 test("设置页渲染冒烟：折线/热力图/1d 三种视图都能渲染", async () => {
@@ -176,6 +232,58 @@ test("设置页渲染冒烟：折线/热力图/1d 三种视图都能渲染", asy
     const text = collectText(tree).join(" | ");
     assert.ok(text.length > 100, chart + " 视图渲染为空");
   }
+});
+
+test("热力图：点击有数据的格子 → 展开当日明细（回归：闭包读错循环变量会让点击静默失效）", async () => {
+  const { panel, reset } = await setup({ localStorageSeed: { oq_settings_chart: "heat" } });
+  let tree = await renderTwice(panel, reset);
+  const cells = findClickable(tree, "oh-clickable");
+  assert.ok(cells.length >= 1, "有数据的日期应带 oh-clickable 且可点击");
+  cells[0].props.onClick();
+  reset();
+  tree = panel();
+  const text = collectText(tree).join(" | ");
+  assert.ok(text.includes("模型：") || text.includes("当天无数据"), "点击后应渲染当日明细条");
+  // 再点一次应取消选中
+  const again = findClickable(tree, "oh-sel");
+  assert.ok(again.length >= 1, "选中的格应有 oh-sel 描边");
+  again[0].props.onClick();
+  reset();
+  const after = collectText(panel()).join(" | ");
+  assert.ok(!after.includes("模型："), "再次点击应收起明细条");
+});
+
+test("设置页渲染冒烟：五个模块 × A/B/C 共 15 种风格都能渲染，且风格确实生效", async () => {
+  const markers = {
+    overview: { A: "总 token", B: "占 ", C: "构成与细项" },
+    chart:    { A: "峰值", B: "日均", C: "" },
+    rank:     { A: "占比 ", B: "权重", C: "01" },
+    live:     { A: "tok/s · 近", B: "每步 P50", C: "可靠性" },
+    rec:      { A: "→", B: "新输入", C: "条长" },
+  };
+  for (const mod of Object.keys(markers)) {
+    for (const v of ["A", "B", "C"]) {
+      const { panel, reset } = await setup({ localStorageSeed: { oq_usage_style: JSON.stringify({ [mod]: v }), opencode_quota_range: "30d" } });
+      const tree = await renderTwice(panel, reset);
+      const text = collectText(tree).join(" | ");
+      assert.ok(text.length > 300, `${mod}/${v} 渲染为空`);
+      const mk = markers[mod][v];
+      if (mk) assert.ok(text.includes(mk), `${mod}/${v} 未体现该风格（缺少「${mk}」）`);
+    }
+  }
+  // chart C 是极简：隐藏峰值标注
+  const { panel, reset } = await setup({ localStorageSeed: { oq_usage_style: JSON.stringify({ chart: "C" }) } });
+  const textC = collectText(await renderTwice(panel, reset)).join(" | ");
+  assert.ok(!textC.includes("峰值"), "极简风格不应显示峰值标注");
+});
+
+test("设置页渲染冒烟：外观预设与持久化", async () => {
+  const { panel, reset, store } = await setup({ localStorageSeed: { oq_usage_style: JSON.stringify({ overview: "B", live: "C" }) } });
+  const tree = await renderTwice(panel, reset);
+  const text = collectText(tree).join(" | ");
+  assert.ok(text.includes("三色卡") || text.includes("占 "), "自定义风格应生效");
+  assert.ok(text.includes("预设"), "设置页应出现「用量统计外观」分组");
+  assert.ok("oq_usage_style" in store, "外观选择应写入 localStorage");
 });
 
 test("设置页渲染冒烟：旧 host（缺 tools/projects/health/live.rate60）不应崩", async () => {
