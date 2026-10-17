@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>用量统计 · UI 方案对照</title>
+<style>
+:root{
+  --bg:#0f1015; --panel:#15161c; --card:#1a1b22; --card2:#1f2029;
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.13);
+  --t1:#f3f4f8; --t2:#b7b8c6; --t3:#7e7f8f;
+  --brand:#8b7bff; --fresh:#6d5bff; --cache:#f59e0b; --out:#10b981; --tool:#0ea5e9;
+  --up:#ef8b8b; --down:#34d399; --track:rgba(255,255,255,.06);
+  --shadow:0 8px 24px rgba(0,0,0,.35);
+}
+html[data-theme=light]{
+  --bg:#f3f4f8; --panel:#ffffff; --card:#ffffff; --card2:#f7f7fb;
+  --line:rgba(16,17,22,.08); --line2:rgba(16,17,22,.14);
+  --t1:#191a21; --t2:#4a4b59; --t3:#8a8b99;
+  --track:rgba(16,17,22,.06); --shadow:0 8px 24px rgba(20,20,40,.08);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--t1);
+  font:13px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:980px;margin:0 auto;padding:22px 20px 80px}
+
+/* ── 页头 ── */
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.top h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.2px}
+.top .sub{font-size:11px;color:var(--t3)}
+.top .grow{flex:1}
+.btn{background:var(--card);border:1px solid var(--line);color:var(--t2);border-radius:999px;
+  padding:5px 12px;font-size:11px;cursor:pointer;font-family:inherit;transition:.15s}
+.btn:hover{border-color:var(--line2);color:var(--t1)}
+.btn.on{background:rgba(139,123,255,.16);border-color:rgba(139,123,255,.5);color:var(--brand);font-weight:700}
+.presets{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 22px}
+.presets .btn{padding:6px 14px}
+
+/* ── 模块外壳 ── */
+.module{margin:0 0 34px}
+.mhead{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.mhead h2{font-size:13px;margin:0;font-weight:700}
+.mhead .desc{font-size:11px;color:var(--t3)}
+.mhead .grow{flex:1}
+.seg{display:inline-flex;gap:4px;background:var(--panel);border:1px solid var(--line);padding:3px;border-radius:999px}
+.seg button{background:none;border:none;color:var(--t3);font:inherit;font-size:11px;
+  padding:3px 10px;border-radius:999px;cursor:pointer}
+.seg button.on{background:rgba(139,123,255,.16);color:var(--brand);font-weight:700}
+.stage{width:100%;max-width:700px;background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;padding:14px}
+.hint{font-size:10px;color:var(--t3);line-height:1.6}
+
+/* ── 卡片 ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.card+.card{margin-top:10px}
+.ttl{font-size:12px;font-weight:600;letter-spacing:.2px}
+.ttlrow{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+.ttlrow .grow{flex:1}
+.cap{font-size:10px;color:var(--t3)}
+.chip{display:inline-flex;align-items:center;gap:3px;background:var(--card2);border:1px solid var(--line);
+  border-radius:8px;padding:3px 8px;font-size:10px;color:var(--t2)}
+.chip b{color:var(--t1);font-weight:700;font-variant-numeric:tabular-nums}
+.delta{font-size:10px;font-weight:700}
+.delta.up{color:var(--up)} .delta.down{color:var(--down)}
+.dot{width:6px;height:6px;border-radius:50%;flex:none;display:inline-block}
+
+/* ── 总览 A ── */
+.ova-top{display:flex;align-items:center;gap:14px}
+.ova-main .big{font-size:30px;font-weight:750;letter-spacing:-.5px;line-height:1.1}
+.ova-main .big span{font-size:13px;font-weight:600;color:var(--t2);margin-left:2px}
+.ova-main .lbl{font-size:10px;color:var(--t3);margin-top:2px}
+.ova-main .row{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;color:var(--t2)}
+.ova-spark{flex:1;min-width:90px}
+.ova-ring{text-align:center;flex:none}
+.ringwrap{position:relative;display:inline-block}
+.ringwrap b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px}
+.stackbar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--track);margin:14px 0 4px}
+.stackbar span{height:100%}
+.stacklbl{display:flex;justify-content:space-between;font-size:10px;color:var(--t3)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.kpis div{text-align:center;position:relative}
+.kpis div+div::before{content:"";position:absolute;left:0;top:2px;bottom:2px;width:1px;background:var(--line)}
+.kpis b{display:block;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpis i{font-style:normal;font-size:10px;color:var(--t3)}
+
+/* ── 总览 B ── */
+.ovb{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+.tile .k{font-size:10px;color:var(--t3)}
+.tile .v{font-size:19px;font-weight:750;margin-top:2px;font-variant-numeric:tabular-nums}
+.tile .p{font-size:9px;color:var(--t3);margin-top:3px}
+.ovb-foot{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+
+/* ── 图表 ── */
+.chartbox{position:relative}
+.chart-svg{display:block;width:100%;height:auto;overflow:visible}
+.chart-note{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:10px;color:var(--t3)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--t3);align-items:center}
+.legend i{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px}
+.hbar{fill:var(--fresh)}
+.hbar.dim{opacity:.28}
+.ov-sum{display:flex;gap:14px;font-size:10px;color:var(--t3);margin-bottom:8px;flex-wrap:wrap}
+.ov-sum b{color:var(--t1);font-size:12px;font-variant-numeric:tabular-nums}
+
+/* ── 热力图 ── */
+.hm{display:grid;grid-template-columns:1fr 176px;gap:14px}
+.hm-head{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.hm-head .btn{padding:2px 8px;font-size:10px}
+.hm-head b{font-size:11px}
+.hm-week{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.hm-wd{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px}
+.hm-wd span{text-align:center;font-size:9px;color:var(--t3)}
+.cell{aspect-ratio:1/1;border-radius:4px;background:var(--track);position:relative;cursor:default}
+.cell.click{cursor:pointer}
+.cell.click:hover{filter:brightness(1.18)}
+.cell.today{outline:1.5px solid var(--brand);outline-offset:1px}
+.cell.sel{outline:2px solid var(--brand);outline-offset:1px}
+.sum{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px}
+.sum .t{font-size:10px;color:var(--t3);margin-bottom:6px}
+.sum .r{display:flex;justify-content:space-between;font-size:11px;padding:2px 0}
+.sum .r b{font-variant-numeric:tabular-nums}
+.hm-legend{display:flex;align-items:center;gap:3px;font-size:9px;color:var(--t3);margin-top:6px}
+.hm-legend i{width:12px;height:9px;border-radius:2px;display:inline-block}
+
+/* ── 时段 ── */
+.hourgrid{display:flex;flex-direction:column;gap:3px}
+.hourrow{display:flex;align-items:center;gap:3px}
+.hourrow>span:first-child{width:14px;font-size:9px;color:var(--t3);flex:none}
+.hourrow .cells{display:flex;gap:3px;flex:1}
+.hourrow .cells i{flex:1;height:13px;border-radius:3px;background:var(--track)}
+.hourx{display:flex;gap:3px;margin-left:17px;font-size:8px;color:var(--t3)}
+.hourx span{flex:1;text-align:center}
+
+/* ── 排行 ── */
+.rank-tabs{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap}
+.rank-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-radius:6px;cursor:pointer}
+.rank-row:hover{background:rgba(139,123,255,.06)}
+.rank-name{width:150px;flex:none;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank-track{flex:1;height:6px;border-radius:3px;background:var(--track);overflow:hidden}
+.rank-fill{height:100%;border-radius:3px}
+.rank-val{width:104px;flex:none;text-align:right;font-size:10px;color:var(--t2);font-variant-numeric:tabular-nums}
+.rank-idx{width:16px;flex:none;font-size:9px;color:var(--t3);font-variant-numeric:tabular-nums;text-align:right}
+.rank-idx.top{color:var(--brand);font-weight:700}
+.rank2 .rank-row{display:block;padding:6px 0}
+.rank2 .r1{display:flex;align-items:baseline;gap:8px}
+.rank2 .r1 .nm{font-size:11px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rank2 .r1 .pc{font-size:10px;color:var(--t2);font-variant-numeric:tabular-nums}
+.rank2 .r1 .vv{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.rank2 .bar{height:6px;border-radius:3px;background:var(--track);margin-top:4px;overflow:hidden}
+.rank2 .meta{font-size:9px;color:var(--t3);margin-top:3px}
+.podium{background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:6px}
+.podium .nm{font-size:14px;font-weight:700}
+.podium .v{font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;float:right}
+.podium .bar{height:8px;border-radius:4px;background:var(--track);margin:8px 0 6px;overflow:hidden}
+.podium .meta{font-size:10px;color:var(--t3)}
+
+/* ── 实时 ── */
+.gauge{display:flex;align-items:center;gap:18px}
+.gauge .side{font-size:11px;color:var(--t2);line-height:1.9}
+.gauge .side b{color:var(--t1);font-variant-numeric:tabular-nums}
+.spark-big{font-size:19px;font-weight:750;font-variant-numeric:tabular-nums}
+.spark-big span{font-size:10px;color:var(--t3);font-weight:500;margin-left:4px}
+.kpi5{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line);margin-top:10px;padding-top:9px}
+.kpi5 div{text-align:center;position:relative}
+.kpi5 div+div::before{content:"";position:absolute;left:0;top:2px;bottom:2px;width:1px;background:var(--line)}
+.kpi5 b{display:block;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi5 i{font-style:normal;font-size:9px;color:var(--t3);display:block;margin-top:1px}
+
+/* ── 最近调用 ── */
+.tl{position:relative;padding-left:14px}
+.tl::before{content:"";position:absolute;left:3.5px;top:6px;bottom:6px;width:1px;background:var(--line2)}
+.tl .it{position:relative;padding:5px 0}
+.tl .it::before{content:"";position:absolute;left:-14px;top:9px;width:7px;height:7px;border-radius:50%;
+  background:var(--brand);box-shadow:0 0 0 2px var(--card)}
+.tl .l1{display:flex;align-items:baseline;gap:8px;font-size:11px}
+.tl .l1 .t{color:var(--t3);font-size:10px;font-variant-numeric:tabular-nums;width:56px;flex:none}
+.tl .l1 .m{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tl .l1 .d{color:var(--t3);font-size:10px;font-variant-numeric:tabular-nums}
+.tl .l2{display:flex;align-items:center;gap:8px;font-size:9px;color:var(--t3);margin-left:64px;margin-top:1px}
+.tl .tok{display:flex;height:5px;width:120px;border-radius:3px;overflow:hidden;background:var(--track)}
+.tl .tok i{height:100%}
+table.rec{width:100%;border-collapse:collapse;font-size:10px}
+table.rec th{text-align:right;color:var(--t3);font-weight:500;padding:4px 6px;border-bottom:1px solid var(--line);font-size:9px}
+table.rec th:first-child,table.rec th:nth-child(2),table.rec th:nth-child(3){text-align:left}
+table.rec td{padding:5px 6px;text-align:right;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--line)}
+table.rec td:first-child,table.rec td:nth-child(2),table.rec td:nth-child(3){text-align:left}
+table.rec tr:nth-child(even) td{background:rgba(255,255,255,.015)}
+.recbar{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:10px}
+.recbar .w{width:56px;color:var(--t3);font-variant-numeric:tabular-nums}
+.recbar .m{width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recbar .b{flex:1;height:8px;border-radius:4px;overflow:hidden;background:var(--track);display:flex}
+.recbar .b i{height:100%}
+
+.tipnote{font-size:10px;color:var(--t3);margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.cmp{display:grid;grid-template-columns:1fr;gap:8px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <h1>用量统计 · UI 方案对照</h1>
+    <span class="sub">真实数据取自 2026-10-17 实例 · 点分段切换方案 · 点组合一次切全部</span>
+    <span class="grow"></span>
+    <button class="btn" id="themeBtn">切换浅色</button>
+  </div>
+
+  <div class="presets">
+    <span class="sub" style="align-self:center;margin-right:4px">整套：</span>
+    <button class="btn" data-preset="pro">① 专业监控</button>
+    <button class="btn on" data-preset="lite">② 轻卡片（推荐）</button>
+    <button class="btn" data-preset="mini">③ 极简一行</button>
+  </div>
+
+  <!-- 1 总览 -->
+  <section class="module">
+    <div class="mhead">
+      <h2>1 · 总览</h2><span class="desc">总量 / 命中率 / 三段构成 / 次级指标</span>
+      <span class="grow"></span>
+      <div class="seg" data-mod="overview">
+        <button data-opt="A" class="on">A 仪表盘</button>
+        <button data-opt="B">B 三色卡</button>
+        <button data-opt="C">C 一行摘要</button>
+      </div>
+    </div>
+    <div class="stage" id="stage-overview"></div>
+  </section>
+
+  <!-- 2 图表 -->
+  <section class="module">
+    <div class="mhead">
+      <h2>2 · 图表</h2><span class="desc">柱状 / 折线 / 热力 / 时段</span>
+      <span class="grow"></span>
+      <div class="seg" data-mod="chart">
+        <button data-opt="A" class="on">A 坐标系</button>
+        <button data-opt="B">B 面积混合</button>
+        <button data-opt="C">C 极简</button>
+      </div>
+    </div>
+    <div class="stage" id="stage-chart"></div>
+  </section>
+
+  <!-- 3 热力图 -->
+  <section class="module">
+    <div class="mhead">
+      <h2>3 · 热力图 / 时段</h2><span class="desc">日历 · 月摘要 · 下钻 · 7×24</span>
+      <span class="grow"></span>
+      <div class="seg" data-mod="heat">
+        <button data-opt="A" class="on">A 日历+摘要</button>
+        <button data-opt="B">B 贡献条</button>
+      </div>
+    </div>
+    <div class="stage" id="stage-heat"></div>
+  </section>
+
+  <!-- 4 排行 -->
+  <section class="module">
+    <div class="mhead">
+      <h2>4 · 排行</h2><span class="desc">模型 / 会话 / 工具 / 项目 / 渠道</span>
+      <span class="grow"></span>
+      <div class="seg" data-mod="rank">
+        <button data-opt="A">A 颁奖台</button>
+        <button data-opt="B">B 数据表</button>
+        <button data-opt="C" class="on">C 精修列表</button>
+      </div>
+    </div>
+    <div class="stage" id="stage-rank"></div>
+  </section>
+
+  <!-- 5 实时 -->
+  <section class="module">
+    <div class="mhead">
+      <h2>5 · 实时</h2><span class="desc">近 60s 速率 / 每步耗时 / 可靠性</span>
+      <span class="grow"></span>
+      <div class="seg" data-mod="live">
+        <button data-opt="A">A 半环仪表</button>
+        <button data-opt="B" class="on">B Sparkline</button>
+        <button data-opt="C">C 状态条</button>
+      </div>
+    </div>
+    <div class="stage" id="stage-live"></div>
+  </section>
+
+  <!-- 6 最近调用 -->
+  <section class="module">
+    <div class="mhead">
+      <h2>6 · 最近调用</h2><span class="desc">时间线 / 表格 / Token 条</span>
+      <span class="grow"></span>
+      <div class="seg" data-mod="rec">
+        <button data-opt="A" class="on">A 时间线</button>
+        <button data-opt="B">B 表格</button>
+        <button data-opt="C">C Token 条</button>
+      </div>
+    </div>
+    <div class="stage" id="stage-rec"></div>
+  </section>
+
+  <p class="hint">说明：这是静态对照页，用真实口径的数字（739.5M / 96.3% / 3241 回复 / 4182 工具）。
+  柱状图与热力格可点击，热力图可切月。选定方案后我按同一套视觉规格落到插件里。</p>
+</div>
+
+<script>
+/* ============ 数据 ============ */
+const D = {
+  total: "739.5M", totalNum: 739.5, daily: "123.2M", delta: "+12.4",
+  cover: "6/30",
+  fresh: 27.36, cache: 709.09, out: 3.03, hit: 96.3,
+  req: 3241, turns: 173, steps: 3256, tools: 4182,
+  spark7: [38, 52, 61, 47, 88, 72, 45],
+  daily30: [12,0,0,45,62,38,0,71,55,80,66,40,0,0,58,72,49,90,61,35,0,44,68,52,77,88,59,41,0,30],
+  prev30:  [8,0,0,30,41,25,0,48,36,55,44,26,0,0,38,49,33,61,40,24,0,29,45,35,52,60,39,27,0,20],
+  models: [
+    {n:"u2-flash", p:48, v:"357.7M", req:1506, out:"1.5M", cache:"336.0M", prov:"unisound"},
+    {n:"step-5-preview", p:25, v:"182.6M", req:821, out:"0.7M", cache:"177.4M", prov:"stepfun"},
+    {n:"deepseek-flash", p:5, v:"39.6M", req:169, out:"0.2M", cache:"39.1M", prov:"deepseek-account"},
+    {n:"deepseek-v4.1-flash", p:5, v:"34.0M", req:307, out:"0.2M", cache:"24.3M", prov:"opencode"},
+    {n:"mimo-v2.6-flash", p:1, v:"11.9K", req:1, out:"176", cache:"0", prov:"stepfun"},
+  ],
+  sessions: [
+    {n:"重构弹窗与状态同步", p:144.7, req:523, st:523},
+    {n:"smart-commit 提交策略", p:142.4, req:546, st:546},
+    {n:"zenith 桌面端打包", p:99.0, req:332, st:333},
+    {n:"TokenLens 悬浮窗", p:74.4, req:297, st:297},
+    {n:"harmonycast 投屏调试", p:71.9, req:233, st:234},
+  ],
+  tools: [
+    {n:"pwsh", c:1141, ms:"8990s", avg:"7.9s"},
+    {n:"read", c:1133, ms:"17s", avg:"15ms"},
+    {n:"edit", c:549, ms:"40s", avg:"74ms"},
+    {n:"grep", c:448, ms:"519s", avg:"1.2s"},
+    {n:"glob", c:339, ms:"949s", avg:"2.8s"},
+  ],
+  projects: [
+    {n:"harmonycast", v:"255.4M", req:1059, tools:1379},
+    {n:"zenith", v:"232.6M", req:834, tools:1021},
+    {n:"dsh-smart-commit", v:"178.9M", req:853, tools:1047},
+    {n:"token-lens", v:"145.4M", req:871, tools:964},
+    {n:"ems资源包", v:"39.4M", req:162, tools:237},
+  ],
+  providers: [
+    {n:"unisound", v:"357.7M", req:1506},
+    {n:"stepfun", v:"183.0M", req:832},
+    {n:"buddy", v:"162.8M", req:666},
+    {n:"deepseek-account", v:"39.6M", req:169},
+    {n:"r4", v:"13.1M", req:128},
+  ],
+  recs: [
+    {t:"10:42:31", m:"u2-flash", p:"harmonycast", in:"1.2K", cr:"11.1K", out:"1.2K", d:"8.2s", w:38},
+    {t:"10:40:07", m:"deepseek-v4.1-flash", p:"zenith", in:"310", cr:"3.8K", out:"320", d:"2.1s", w:14},
+    {t:"10:38:55", m:"u2-flash", p:"—", in:"980", cr:"0", out:"64", d:"0.8s", w:5},
+    {t:"10:35:12", m:"step-5-preview", p:"dsh-smart-commit", in:"4.1K", cr:"22.6K", out:"780", d:"12.4s", w:66},
+    {t:"10:31:48", m:"u2-flash", p:"harmonycast", in:"2.6K", cr:"48.9K", out:"2.1K", d:"18.9s", w:100},
+  ],
+};
+
+const state = { overview:"A", chart:"A", heat:"A", rank:"C", live:"B", rec:"A" };
+const MAX = Math.max(...D.daily30);
+
+/* ============ 小工具 ============ */
+const fmtPct = (v) => (v < 1 ? "<1%" : Math.round(v) + "%");
+function ring(pct, size = 46) {
+  const r = (size - 7) / 2, c = 2 * Math.PI * r, off = c * (1 - pct / 100);
+  return `<span class="ringwrap"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--line2)" stroke-width="4"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--brand)" stroke-width="4"
+      stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"
+      transform="rotate(-90 ${size/2} ${size/2})"/></svg><b>${pct}%</b></span>`;
+}
+function sparkline(vals, w = 130, h = 34, color = "var(--fresh)") {
+  const max = Math.max(...vals, 1), min = Math.min(...vals);
+  const pts = vals.map((v, i) => [i * (w / (vals.length - 1)), h - ((v - min) / (max - min || 1)) * (h - 6) - 3]);
+  const line = pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="chart-svg" preserveAspectRatio="none">
+    <path d="M${line.split(" ").join(" L")}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${pts[pts.length-1][0].toFixed(1)}" cy="${pts[pts.length-1][1].toFixed(1)}" r="2.2" fill="${color}"/>
+  </svg>`;
+}
+function heatColor(lv) {
+  const c = ["var(--track)","#c8c6ee","#a9a4e6","#8b83dd","#7066cf","#5749ba","#443699"];
+  return document.documentElement.dataset.theme === "light"
+    ? ["var(--track)","#d9d4f0","#c1b8e6","#a699d8","#8a79c6","#7059b0","#574194"][lv]
+    : c[lv];
+}
+
+/* ============ 1 总览 ============ */
+function overviewA() {
+  const freshP = (D.fresh / D.totalNum * 100), cacheP = (D.cache / D.totalNum * 100), outP = (D.out / D.totalNum * 100);
+  return `
+  <div class="card">
+    <div class="ttlrow"><span class="ttl">总览</span><span class="grow"></span><span class="cap">近 30 天 · ${D.cover} 天有数据</span></div>
+    <div class="ova-top">
+      <div class="ova-main">
+        <div class="big num">739.5<span>M</span></div>
+        <div class="lbl">总 token</div>
+        <div class="row"><span class="num">日均 ${D.daily}</span><span class="delta up">↑${D.delta}%</span></div>
+      </div>
+      <div class="ova-spark">${sparkline(D.spark7, 150, 40)}<div class="cap" style="text-align:center">近 7 天</div></div>
+      <div class="ova-ring">${ring(D.hit)}<div class="cap" style="margin-top:2px">缓存命中率</div></div>
+    </div>
+    <div class="stackbar">
+      <span style="width:${freshP}%;background:var(--fresh)"></span>
+      <span style="width:${cacheP}%;background:var(--cache)"></span>
+      <span style="width:${outP}%;background:var(--out)"></span>
+    </div>
+    <div class="stacklbl">
+      <span style="color:var(--fresh)">新输入 3.7%</span>
+      <span style="color:var(--cache)">缓存读 95.9%</span>
+      <span style="color:var(--out)">输出 0.4%</span>
+    </div>
+    <div class="kpis">
+      <div><b class="num">3,241</b><i>回复</i></div>
+      <div><b class="num">173</b><i>轮次</i></div>
+      <div><b class="num">3,256</b><i>步数</i></div>
+      <div><b class="num">4,182</b><i>工具调用</i></div>
+    </div>
+  </div>`;
+}
+function overviewB() {
+  const tiles = [
+    { k:"新输入", v:"27.36M", p:"占 3.7%", d:"+199%", c:"var(--fresh)", s:[12,18,15,22,19,26,24] },
+    { k:"缓存读", v:"709.1M", p:"占 95.9%", d:"", c:"var(--cache)", s:[60,72,68,88,79,92,86] },
+    { k:"输出", v:"3.03M", p:"占 0.4%", d:"+101%", c:"var(--out)", s:[2,3,2,4,3,4,3] },
+  ];
+  return `<div class="ovb">${tiles.map(t => `
+    <div class="tile">
+      <div class="k">${t.k}</div>
+      <div class="v num">${t.v}</div>
+      <div style="margin:5px 0 3px">${sparkline(t.s, 92, 26, t.c)}</div>
+      <div class="p">${t.p}${t.d ? ` · <span class="delta up">${t.d}</span>` : ""}</div>
+    </div>`).join("")}</div>
+    <div class="ovb-foot">
+      <span class="chip">总量 <b>739.5M</b></span><span class="chip">命中 <b>96.3%</b></span>
+      <span class="chip">回复 <b>3,241</b></span><span class="chip">轮次 <b>173</b></span>
+      <span class="chip">步数 <b>3,256</b></span><span class="chip">工具 <b>4,182</b></span>
+    </div>`;
+}
+function overviewC() {
+  return `<div class="card">
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <span class="num" style="font-size:22px;font-weight:750">739.5M</span><span class="cap">总量</span>
+      <span class="chip">命中 <b>96.3%</b></span>
+      <span class="chip">日均 <b>123.2M</b></span>
+      <span class="chip">回复 <b>3,241</b></span>
+      <span class="delta up">↑12.4%</span>
+      <span class="grow" style="flex:1"></span>
+      <button class="btn" onclick="this.closest('.card').querySelector('.more').hidden=!this.closest('.card').querySelector('.more').hidden">详情 ▾</button>
+    </div>
+    <div class="more" hidden style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap">
+      <span class="chip">新输入 <b>27.36M</b></span><span class="chip">缓存读 <b>709.1M</b></span>
+      <span class="chip">输出 <b>3.03M</b></span><span class="chip">轮次 <b>173</b></span>
+      <span class="chip">步数 <b>3,256</b></span><span class="chip">工具 <b>4,182</b></span>
+    </div></div>`;
+}
+
+/* ============ 2 图表 ============ */
+function barsWithAxes() {
+  const W = 660, H = 168, pl = 42, pb = 20, pt = 12;
+  const iw = W - pl - 6, ih = H - pb - pt, n = D.daily30.length, bw = iw / n;
+  const path = (arr) => arr.map((v, i) => {
+    const x = pl + i * bw + bw / 2, y = pt + ih - (v / MAX) * ih;
+    return x.toFixed(1) + "," + y.toFixed(1);
+  });
+  const linePts = path(D.daily30).join(" ");
+  const area = `M${pl + bw/2},${pt+ih} L${linePts.split(" ").join(" L")} L${(pl + (n-1)*bw + bw/2).toFixed(1)},${pt+ih} Z`;
+  const bars = D.daily30.map((v, i) => {
+    const h = (v / MAX) * ih, x = pl + i * bw + 1.5, y = pt + ih - h;
+    return `<rect class="hbar" data-i="${i}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(bw-3).toFixed(1)}" height="${Math.max(v>0?2:1,h).toFixed(1)}" rx="1.5"/>`;
+  }).join("");
+  const yt = [0, .5, 1].map(r => {
+    const y = pt + ih - r * ih;
+    return `<line x1="${pl}" y1="${y.toFixed(1)}" x2="${W-4}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width=".6" ${r===0?"":'stroke-dasharray="2 3"'}/>
+      <text x="${pl-6}" y="${(y+3).toFixed(1)}" text-anchor="end" fill="var(--t3)" font-size="8">${Math.round(MAX*r)}M</text>`;
+  }).join("");
+  const labels = D.daily30.map((_, i) => {
+    if (![0, 7, 14, 21, 29].includes(i)) return "";
+    return `<text x="${(pl + i*bw + bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle" fill="var(--t3)" font-size="8">09-${18+i}</text>`;
+  }).join("");
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">按日趋势</span><span class="grow"></span><span class="cap">峰值 90M · 10-05</span></div>
+    <div class="chartbox">
+      <svg class="chart-svg" viewBox="0 0 ${W} ${H}" id="chartA">
+        ${yt}
+        <path d="${area}" fill="url(#gA)" opacity=".5"/>
+        <polyline points="${linePts}" fill="none" stroke="var(--fresh)" stroke-width="1.6" stroke-linejoin="round" opacity=".9"/>
+        ${bars}
+        ${labels}
+        <defs><linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#6d5bff" stop-opacity=".45"/><stop offset="100%" stop-color="#6d5bff" stop-opacity="0"/>
+        </linearGradient></defs>
+      </svg>
+    </div>
+    <div class="chart-note"><span>点击任意柱/点可聚焦当天，其余变淡</span><span class="grow" style="flex:1"></span>
+      <span class="legend"><span><i style="background:var(--cache)"></i>命中率虚线</span></span></div>
+  </div>`;
+}
+function chartB() {
+  const W = 660, H = 150, n = 30, step = W / (n - 1);
+  const pts = D.daily30.map((v, i) => [i * step, H - 14 - (v / MAX) * (H - 28)]);
+  const prev = D.prev30.map((v, i) => [i * step, H - 14 - (v / MAX) * (H - 28)]);
+  const line = pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  const line2 = prev.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  const hit = D.daily30.map((v, i) => [i * step, H - 14 - (v > 0 ? .96 : .2) * (H - 28)]);
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">按日趋势</span><span class="grow"></span><span class="cap">实线 本期 · 灰虚线 上期 · 黄虚线 命中率</span></div>
+    <svg class="chart-svg" viewBox="0 0 ${W} ${H}">
+      <path d="M0,${H-14} L${line.split(" ").join(" L")} L${W},${H-14} Z" fill="url(#gB)"/>
+      <polyline points="${line2}" fill="none" stroke="var(--line2)" stroke-width="1" stroke-dasharray="3 3"/>
+      <polyline points="${hit.map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ")}" fill="none" stroke="var(--cache)" stroke-width="1" stroke-dasharray="4 2" opacity=".9"/>
+      <polyline points="${line}" fill="none" stroke="var(--fresh)" stroke-width="1.8" stroke-linejoin="round"/>
+      <defs><linearGradient id="gB" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#6d5bff" stop-opacity=".35"/><stop offset="100%" stop-color="#6d5bff" stop-opacity=".02"/>
+      </linearGradient></defs>
+    </svg>
+    <div class="chart-note"><span class="legend">
+      <span><i style="background:var(--fresh)"></i>每日总量</span>
+      <span><i style="background:var(--cache)"></i>缓存命中率</span>
+      <span><i style="background:var(--line2)"></i>上期同长窗口</span></span></div>
+  </div>`;
+}
+function chartC() {
+  const max = Math.max(...D.daily30, 1);
+  return `<div class="card">
+    <div class="ov-sum">
+      <span>峰值 <b>90M</b> · 10-05</span><span>日均 <b>24.6M</b></span><span>环比 <b class="num" style="color:var(--up)">↑12.4%</b></span>
+    </div>
+    <div style="display:flex;align-items:flex-end;gap:3px;height:96px">
+      ${D.daily30.map(v => `<div title="${v}M" style="flex:1;height:${Math.max(v?3:1, v / max * 100)}%;border-radius:2px;background:${v ? "var(--fresh)" : "var(--track)"};opacity:${v? .72+ (v/max)*.28 : 1}"></div>`).join("")}
+    </div>
+    <div class="chart-note"><span>只保留 hover 数值，不画坐标轴（最干净，但量级要靠悬停）</span></div>
+  </div>`;
+}
+
+/* ============ 3 热力图 ============ */
+let hmMonth = 0, hmSel = null;
+function monthGrid(offset) {
+  const now = new Date(2026, 9, 17);
+  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const y = d.getFullYear(), m = d.getMonth(), days = new Date(y, m + 1, 0).getDate();
+  const lead = (new Date(y, m, 1).getDay() + 6) % 7;
+  const rand = (i) => {
+    const seed = (y * 100 + m + 1) * 31 + i * 17;
+    const v = (Math.sin(seed) * 10000) % 1;
+    return Math.abs(v) < .38 ? 0 : Math.round(Math.abs(v) * 90 + 12);
+  };
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(`<div class="cell" style="visibility:hidden"></div>`);
+  let max = 1;
+  const vals = [];
+  for (let i = 1; i <= days; i++) { const v = rand(i); vals.push(v); if (v > max) max = v; }
+  for (let i = 1; i <= days; i++) {
+    const v = vals[i - 1];
+    const key = y + "-" + String(m + 1).padStart(2, "0") + "-" + String(i).padStart(2, "0");
+    const lv = v ? Math.min(6, Math.max(1, Math.ceil(v / max * 6))) : 0;
+    const isToday = key === "2026-10-17";
+    const cls = ["cell", v ? "click" : "", isToday ? "today" : "", key === hmSel ? "sel" : ""].join(" ");
+    cells.push(`<div class="${cls}" data-key="${key}" data-v="${v}" style="background:${v ? heatColor(lv) : "var(--track)"}" title="${key} · ${v}M"></div>`);
+  }
+  while (cells.length % 7) cells.push(`<div class="cell" style="visibility:hidden"></div>`);
+  return { y, m, cells, days, total: vals.reduce((a, b) => a + b, 0), max };
+}
+function heatA() {
+  const g = monthGrid(hmMonth);
+  const selV = hmSel ? document.querySelector(`[data-key="${hmSel}"]`)?.dataset.v : null;
+  const summary = hmSel
+    ? `<div class="sum"><div class="t">${hmSel}${selV==="0"?"（无数据）":""}</div>
+        <div class="r"><span>总量</span><b>${selV||0}M</b></div>
+        <div class="r"><span>新输入</span><b>${Math.round((selV||0)*.036*10)/10}M</b></div>
+        <div class="r"><span>缓存读</span><b>${Math.round((selV||0)*.959*10)/10}M</b></div>
+        <div class="r"><span>输出</span><b>${Math.round((selV||0)*.004*10)/10}M</b></div>
+        <div class="r"><span>回复 / 步数</span><b>${Math.max(1,Math.round((selV||0)*.7))} / ${Math.max(1,Math.round((selV||0)*.9))}</b></div>
+        <div class="t" style="margin:8px 0 3px">模型 Top3</div>
+        <div class="r"><span>u2-flash</span><b>${Math.round((selV||0)*.6)}M</b></div>
+        <div class="r"><span>deepseek-v4.1</span><b>${Math.round((selV||0)*.3)}M</b></div>
+        <div class="r"><span>step-5-preview</span><b>${Math.round((selV||0)*.1)}M</b></div>
+        <button class="btn" style="margin-top:8px;width:100%" onclick="hmSel=null;render('heat')">收起</button>
+       </div>`
+    : `<div class="sum"><div class="t">本月</div>
+        <div class="r"><span>总量</span><b>${g.total}M</b></div>
+        <div class="r"><span>日均</span><b>${Math.round(g.total/g.days*10)/10}M</b></div>
+        <div class="r"><span>最高</span><b>${g.max}M</b></div>
+        <div class="t" style="margin:8px 0 3px">图例（档位区间）</div>
+        <div class="r"><span>无数据</span><b>—</b></div>
+        <div class="r"><span>低</span><b>&lt; ${Math.round(g.max*.33)}M</b></div>
+        <div class="r"><span>中</span><b>${Math.round(g.max*.33)}–${Math.round(g.max*.66)}M</b></div>
+        <div class="r"><span>高</span><b>&gt; ${Math.round(g.max*.66)}M</b></div>
+        <button class="btn" style="margin-top:8px;width:100%" onclick="alert('点击任意有色格子 → 这里切换为当日明细')">点格子看当日明细</button>
+       </div>`;
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">热力图</span><span class="grow"></span><span class="cap">近 90 天 · 可回看 3 个月</span></div>
+    <div class="hm">
+      <div>
+        <div class="hm-head">
+          <button class="btn" onclick="hmMonth=Math.max(-2,hmMonth-1);render('heat')">‹</button>
+          <b>${g.y} 年 ${g.m + 1} 月</b>
+          <button class="btn" onclick="hmMonth=Math.min(0,hmMonth+1);render('heat')">›</button>
+          ${hmMonth !== 0 ? `<button class="btn" onclick="hmMonth=0;render('heat')">回到本月</button>` : ""}
+          <span class="grow" style="flex:1"></span>
+          <span class="cap">${hmSel ? "已选 " + hmSel : "点格子看明细"}</span>
+        </div>
+        <div class="hm-wd">${["一","二","三","四","五","六","日"].map(w=>`<span>${w}</span>`).join("")}</div>
+        <div class="hm-week" id="hmGrid">${g.cells.join("")}</div>
+        <div class="hm-legend"><span>少</span>${[1,2,3,4,5,6].map(l=>`<i style="background:${heatColor(l)}"></i>`).join("")}<span>多</span></div>
+      </div>
+      ${summary}
+    </div>
+  </div>`;
+}
+function heatB() {
+  const vals = D.daily30;
+  const max = Math.max(...vals, 1);
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">最近 30 天</span><span class="grow"></span><span class="cap">单行贡献条 · hover 看数值</span></div>
+    <div style="display:flex;gap:3px">${vals.map((v, i) => {
+      const lv = v ? Math.min(6, Math.max(1, Math.ceil(v / max * 6))) : 0;
+      return `<div title="09-${18+i} · ${v}M" style="flex:1;height:34px;border-radius:4px;background:${v?heatColor(lv):"var(--track)"};cursor:pointer"></div>`;
+    }).join("")}</div>
+    <div class="chart-note"><span>09-18</span><span class="grow" style="flex:1"></span><span>10-17</span></div>
+  </div>`;
+}
+function hourHeat() {
+  const wd = ["一","二","三","四","五","六","日"];
+  const peak = { d: 4, h: 17 };
+  const rows = wd.map((w, d) => {
+    const cells = Array.from({ length: 24 }, (_, h) => {
+      const base = [8,20,45,60,55,40,30,38,70,95,90,85,55,60,72,80,88,100,65,40,30,24,16,10][h];
+      const dm = [0.55,0.7,0.85,0.9,1,0.8,0.6][d];
+      const v = Math.round(base * dm);
+      const lv = Math.min(6, Math.max(1, Math.ceil(v / 100 * 6)));
+      const isPeak = d === peak.d && h === peak.h;
+      return `<i title="周${w} ${String(h).padStart(2,"0")}:00 · ${v}M" style="background:${heatColor(lv)};${isPeak?"outline:1px solid #fff;outline-offset:1px":""}"></i>`;
+    }).join("");
+    return `<div class="hourrow"><span>${w}</span><div class="cells">${cells}</div></div>`;
+  }).join("");
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">时段分布</span><span class="grow"></span><span class="cap">行=周一..周日 · 列=0..23 点</span></div>
+    <div class="hourgrid">${rows}</div>
+    <div class="hourx">${[0,6,12,18,23].map(h=>`<span>${h}</span>`).join("")}</div>
+    <div class="chart-note"><span class="hm-legend">少 ${[1,2,3,4,5,6].map(l=>`<i style="background:${heatColor(l)};width:12px;height:9px;border-radius:2px;display:inline-block"></i>`).join("")} 多</span>
+      <span class="grow" style="flex:1"></span><span>峰值 周五 17:00 · 101.2M</span></div>
+  </div>`;
+}
+
+/* ============ 4 排行 ============ */
+const RANK_TABS = ["模型","会话","工具","项目","渠道"];
+function rankHead(active) {
+  return `<div class="rank-tabs">${RANK_TABS.map((t, i) =>
+    `<button class="btn ${i===active?"on":""}" onclick="rankTab=${i};render('rank')">${t}</button>`).join("")}</div>`;
+}
+let rankTab = 0;
+function rankA() {
+  const m = D.models[0];
+  return `<div class="card">
+    ${rankHead(rankTab)}
+    <div class="podium">
+      <div><span class="nm">${m.n}</span><span class="v">${m.v}</span></div>
+      <div class="bar"><span class="rank-fill" style="display:block;width:${m.p}%;background:linear-gradient(90deg,#8b7bff,#2ec5ff)"></span></div>
+      <div class="meta">占比 ${m.p}% · 请求 ${m.req} · 输出 ${m.out} · 缓存读 ${m.cache}</div>
+    </div>
+    ${D.models.slice(1).map((x, i) => `<div class="rank-row">
+      <span class="rank-idx">${i+2}</span><span class="rank-name">${x.n}</span>
+      <span class="rank-track"><span class="rank-fill" style="display:block;width:${x.p*2}%;background:linear-gradient(90deg,#8b7bff,#2ec5ff)"></span></span>
+      <span class="rank-val">${x.p}% · ${x.v}</span></div>`).join("")}
+  </div>`;
+}
+function rankB() {
+  const rows = rankTab === 1 ? D.sessions.map(s => ({ n:s.n, p:Math.round(s.p/144.7*100), v:s.p+"M", req:s.req }))
+             : rankTab === 2 ? D.tools.map(t => ({ n:t.n, p:Math.round(t.c/1141*100), v:t.c+" 次", req:t.ms }))
+             : rankTab === 3 ? D.projects.map(p => ({ n:p.n, p:Math.round(parseFloat(p.v)/255.4*100), v:p.v, req:p.req }))
+             : rankTab === 4 ? D.providers.map(p => ({ n:p.n, p:Math.round(parseFloat(p.v)/357.7*100), v:p.v, req:p.req }))
+             : D.models.map(m => ({ n:m.n, p:m.p, v:m.v, req:m.req }));
+  const col = rankTab === 2 ? "耗时" : "请求";
+  return `<div class="card">
+    ${rankHead(rankTab)}
+    <table class="rec">
+      <thead><tr><th style="width:22px">#</th><th>${RANK_TABS[rankTab]}</th><th style="width:130px">占比</th><th style="width:70px">总量</th><th style="width:56px">${col}</th></tr></thead>
+      <tbody>${rows.map((r, i) => `<tr>
+        <td style="color:var(--t3)">${i+1}</td><td>${r.n}</td>
+        <td><div class="rank-track"><div class="rank-fill" style="display:block;width:${r.p}%;background:var(--fresh)"></div></div></td>
+        <td style="font-weight:600">${r.v}</td><td style="color:var(--t2)">${r.req}</td></tr>`).join("")}</tbody>
+    </table></div>`;
+}
+function rankC() {
+  const rows = rankTab === 1 ? D.sessions.map(s => ({ n:s.n, p:Math.round(s.p/144.7*100), v:s.p+"M", meta:`请求 ${s.req} · 步 ${s.st}` }))
+             : rankTab === 2 ? D.tools.map(t => ({ n:t.n, p:Math.round(t.c/1141*100), v:t.c+" 次", meta:`累计 ${t.ms} · 均 ${t.avg}` }))
+             : rankTab === 3 ? D.projects.map(p => ({ n:p.n, p:Math.round(parseFloat(p.v)/255.4*100), v:p.v, meta:`请求 ${p.req} · 工具 ${p.tools}` }))
+             : rankTab === 4 ? D.providers.map(p => ({ n:p.n, p:Math.round(parseFloat(p.v)/357.7*100), v:p.v, meta:`请求 ${p.req}` }))
+             : D.models.map(m => ({ n:m.n, p:m.p, v:m.v, meta:`${m.prov} · 请求 ${m.req} · 输出 ${m.out}` }));
+  return `<div class="card rank2">
+    ${rankHead(rankTab)}
+    ${rows.map((r, i) => `<div class="rank-row">
+      <div class="r1"><span class="rank-idx ${i<3?"top":""}">${String(i+1).padStart(2,"0")}</span>
+        <span class="nm">${r.n}</span><span class="pc">${fmtPct(r.p)}</span><span class="vv">${r.v}</span></div>
+      <div class="bar"><span style="display:block;height:100%;width:${r.p}%;background:${i===0?"linear-gradient(90deg,#8b7bff,#2ec5ff)":"linear-gradient(90deg,#8b7bff99,#2ec5ff66)"}"></span></div>
+      <div class="meta">${r.meta}</div>
+    </div>`).join("")}
+  </div>`;
+}
+
+/* ============ 5 实时 ============ */
+function liveA() {
+  const pct = Math.min(1, 1.4 / 200);
+  const r = 52, c = Math.PI * r; // 半环
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">实时</span><span class="grow"></span><span class="cap">本次启动 · 近 60 秒窗口</span></div>
+    <div class="gauge">
+      <svg width="150" height="86" viewBox="0 0 150 86">
+        <path d="M20,72 A58,58 0 0 1 130,72" fill="none" stroke="var(--track)" stroke-width="10" stroke-linecap="round"/>
+        <path d="M20,72 A58,58 0 0 1 130,72" fill="none" stroke="url(#gg)" stroke-width="10" stroke-linecap="round"
+          stroke-dasharray="${(c*pct).toFixed(1)} ${c}"/>
+        <text x="75" y="58" text-anchor="middle" fill="var(--t1)" font-size="22" font-weight="750">1.4</text>
+        <text x="75" y="72" text-anchor="middle" fill="var(--t3)" font-size="9">tok/s · 近 60s</text>
+        <defs><linearGradient id="gg" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#8b7bff"/><stop offset="100%" stop-color="#0ea5e9"/></linearGradient></defs>
+      </svg>
+      <div class="side">
+        每步耗时 <b>4.1s</b> <span style="color:var(--t3)">P50</span> / <b>9.8s</b> <span style="color:var(--t3)">P90</span><br>
+        工具调用 <b>4,182</b> · 轮次/步骤 <b>173 / 3,256</b><br>
+        可靠性 重试 <b>5</b> · 压缩 <b>2</b> · 失败 <b>0</b> · 工具失败 <b>1</b>
+      </div>
+    </div>
+  </div>`;
+}
+function liveB() {
+  const vals = [1.1,1.4,1.2,1.8,2.6,1.4,0.9,0.6,0.8,1.2,2.1,3.4,2.2,1.6,1.1,0.9,1.3,2.4,1.8,1.4];
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">实时</span><span class="grow"></span><span class="cap">本次启动 · 每 3s 采样 20 点</span></div>
+    <div style="display:flex;align-items:flex-end;gap:12px">
+      <div><div class="spark-big num">1.4<span>tok/s 近 60s</span></div>
+        <div class="cap" style="margin-top:2px">最近 20 个采样点</div></div>
+      <div style="flex:1">${sparkline(vals, 340, 46)}</div>
+    </div>
+    <div class="kpi5">
+      <div><b class="num">4.1s</b><i>每步 P50 · P90 9.8s</i></div>
+      <div><b class="num">4,182</b><i>工具 · 失败 1</i></div>
+      <div><b class="num">173</b><i>轮次</i></div>
+      <div><b class="num">3,256</b><i>步数</i></div>
+      <div><b class="num">3,241</b><i>回复</i></div>
+    </div>
+    <div class="chart-note"><span>可靠性折进对应列的副值：重试 5 · 压缩 2（0.69M tokens）</span></div>
+  </div>`;
+}
+function liveC() {
+  return `<div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span class="dot" style="background:var(--down);box-shadow:0 0 0 3px rgba(52,211,153,.15)"></span>
+    <b style="font-size:11px">活跃</b>
+    <span class="chip">1.4 <b>tok/s</b></span>
+    <span class="chip">每步 <b>4.1s</b></span>
+    <span class="chip">工具 <b>4,182</b></span>
+    <span class="chip">轮次 <b>173</b> / 步 <b>3,256</b></span>
+    <span class="chip">重试 <b>5</b> · 压缩 <b>2</b></span>
+  </div>`;
+}
+
+/* ============ 6 最近调用 ============ */
+function recA() {
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">最近调用</span><span class="grow"></span><span class="cap">新输入 → 输出 · 点行复制</span></div>
+    <div class="tl">
+      ${D.recs.map((r, i) => `<div class="it">
+        <div class="l1"><span class="t num">${r.t}</span><span class="m">${r.m}</span>
+          <span class="d num">${r.in} → ${r.out}</span><span class="d" style="color:var(--t2)">${r.d}</span></div>
+        <div class="l2"><span>${r.p}</span><span>缓存读 ${r.cr}</span>
+          <span class="tok"><i style="width:${Math.max(4,r.w*.12)}%;background:var(--fresh)"></i><i style="width:${r.w*.8}%;background:var(--cache)"></i><i style="width:${Math.max(2,r.w*.08)}%;background:var(--out)"></i></span>
+        </div></div>`).join("")}
+    </div>
+  </div>`;
+}
+function recB() {
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">最近调用</span><span class="grow"></span><span class="cap">表头固定 9px · 数字右对齐</span></div>
+    <table class="rec">
+      <thead><tr><th>时间</th><th>模型</th><th>项目</th><th>新输入</th><th>缓存读</th><th>输出</th><th>耗时</th></tr></thead>
+      <tbody>${D.recs.map(r=>`<tr><td class="num">${r.t}</td><td>${r.m}</td><td style="color:var(--t3)">${r.p}</td>
+        <td>${r.in}</td><td style="color:var(--cache)">${r.cr}</td><td>${r.out}</td><td style="color:var(--t3)">${r.d}</td></tr>`).join("")}</tbody>
+    </table></div>`;
+}
+function recC() {
+  return `<div class="card">
+    <div class="ttlrow"><span class="ttl">最近调用</span><span class="grow"></span><span class="cap">条长 = 该条 token 占最大值的比例</span></div>
+    ${D.recs.map(r=>`<div class="recbar">
+      <span class="w num">${r.t.slice(0,5)}</span><span class="m">${r.m}</span>
+      <span class="b"><i style="width:${r.w*.08}%;background:var(--fresh)"></i><i style="width:${r.w*.82}%;background:var(--cache)"></i><i style="width:${r.w*.1}%;background:var(--out)"></i></span>
+      <span class="num" style="width:52px;text-align:right;color:var(--t3)">${r.d}</span>
+    </div>`).join("")}
+  </div>`;
+}
+
+/* ============ 渲染调度 ============ */
+const R = {
+  overview: { A: overviewA, B: overviewB, C: overviewC },
+  chart:    { A: barsWithAxes, B: chartB, C: chartC },
+  heat:     { A: heatA, B: heatB },
+  rank:     { A: rankA, B: rankB, C: rankC },
+  live:     { A: liveA, B: liveB, C: liveC },
+  rec:      { A: recA, B: recB, C: recC },
+};
+function render(mod) {
+  const el = document.getElementById("stage-" + mod);
+  if (!el) return;
+  let html = R[mod][state[mod]]();
+  if (mod === "heat") html += `<div style="margin-top:10px">${hourHeat()}</div>`;
+  el.innerHTML = html;
+  if (mod === "heat") {
+    el.querySelectorAll(".cell.click").forEach(c => c.addEventListener("click", () => {
+      hmSel = hmSel === c.dataset.key ? null : c.dataset.key; render("heat");
+    }));
+  }
+  if (mod === "chart" && state.chart === "A") {
+    const svg = el.querySelector("#chartA");
+    if (svg) svg.querySelectorAll(".hbar").forEach(b => b.addEventListener("click", () => {
+      const on = b.classList.contains("focus");
+      svg.querySelectorAll(".hbar").forEach(x => { x.classList.remove("dim", "focus"); });
+      if (!on) {
+        b.classList.add("focus");
+        svg.querySelectorAll(".hbar").forEach(x => { if (x !== b) x.classList.add("dim"); });
+      }
+    }));
+  }
+}
+function renderAll() { Object.keys(R).forEach(render); }
+
+document.querySelectorAll(".seg").forEach(seg => {
+  seg.addEventListener("click", e => {
+    const b = e.target.closest("button[data-opt]"); if (!b) return;
+    const mod = seg.dataset.mod;
+    state[mod] = b.dataset.opt;
+    seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+    render(mod);
+  });
+});
+const PRESETS = {
+  pro:  { overview:"A", chart:"A", heat:"A", rank:"B", live:"B", rec:"B" },
+  lite: { overview:"A", chart:"A", heat:"A", rank:"C", live:"B", rec:"A" },
+  mini: { overview:"C", chart:"C", heat:"B", rank:"C", live:"C", rec:"C" },
+};
+document.querySelectorAll("[data-preset]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const p = PRESETS[btn.dataset.preset];
+    Object.assign(state, p);
+    document.querySelectorAll("[data-preset]").forEach(x => x.classList.toggle("on", x === btn));
+    document.querySelectorAll(".seg").forEach(seg => {
+      seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.opt === state[seg.dataset.mod]));
+    });
+    renderAll();
+  });
+});
+document.getElementById("themeBtn").addEventListener("click", () => {
+  const root = document.documentElement;
+  const light = root.dataset.theme === "light";
+  root.dataset.theme = light ? "dark" : "light";
+  document.getElementById("themeBtn").textContent = light ? "切换浅色" : "切换深色";
+  renderAll();
+});
+renderAll();
+</script>
+</body>
+</html>

@@ -59,8 +59,24 @@ GET /api/token-meter?range=1d|7d|30d|all[&withChart=1]  → computeUsage() 现�
 
 | 表 | 维度 | 口径 |
 |---|---|---|
-| `daily_tool` | 工具 | 只统计 `tool/result`：`calls`、`ms`（= `tool/call`→`tool/result` 的墙钟耗时） |
+| `daily_tool` | 工具 | 只统计 `tool/result`：`calls`、`ms`（= `tool/call`→`tool/result` 的墙钟耗时）、`errors` |
 | `daily_project` | 项目 | 按会话头 `cwd` 的末段（小写）归集；`sessions` 为当日该项目下的会话数 |
+| `daily_session` | 会话 | 按 `session_id` 归集；标题不入库（见 `sessionTitles`），只存计数 |
+| `daily_hour` | 时段 | 按**本地小时**归集，7×24 矩阵的数据源；90 天 × 24 行上限 |
+| `daily_reliability` | 可靠性 | 重试 / 压缩次数 / 被压缩 token 数 / 失败轮次 / 工具失败 |
+| `daily_retry` | 重试原因 | `code`（`llm/retry.data.failure.code`）→ 次数，存于 `events.raw` |
+
+> **v5 的两列**：`events.err`（该事件是失败：`turn/end.reason.kind=error`、`tool/result.isError`）、
+> `events.num`（整数值，目前只放 `command/done` 文案里解析出的"被压缩 token 数"）。
+> 这两列让上面两张可靠性表可以像其它维度一样**从 events 幂等重建**，而不是靠内存累加。
+>
+> **一次性补历史**：`llm/retry` / `compaction/end` / `command/done` / `session/title` 在 v4
+> 及以前从未落库。`backfillExtra()` 在启动后 2.6s 异步重读一遍会话文件，只 ingest 这四类
+> （绕过水位线），重建可靠性表并置 `meta.extra_backfill=1`；实测 81 个会话文件约 9s，
+> 不阻塞首屏。空库直接跳过（全量扫描会一并写入）。
+>
+> **口径**：`reliability` 现在是**区间口径**（`since: "range"`），不再随重启归零；
+> 界面上标注「可靠性（所选区间）」。
 
 - **工具名从哪来**：只在 `tool/call.data.name` 上（实测 `read`/`edit`/`pwsh`/`grep`/`job_output`…）。
   `tool/call` 本身**不落库**（避免 events 体积 +15%），名字在内存里配对后写到对应的
