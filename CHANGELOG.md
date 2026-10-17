@@ -2,7 +2,64 @@
 
 ## [Unreleased]
 
-### Fixed
+### 用量统计 v2 改造（2026-10-16，详见 `docs/plan-usage-v2.md`）
+
+#### Added
+- **三个新维度：工具 / 项目 / 渠道**（schema v4）。`events` 增补 `project` / `tool` / `ms` /
+  `provider` 四列（`ALTER TABLE` 幂等升级），新增派生表 `daily_tool`、`daily_project`，
+  并新增 `tools[]` / `projects[]` / `providers[]` 三个 payload 字段。设置页对应新增
+  「工具排行」（按次数/耗时切换）、「项目排行」（按会话 cwd 归集）、「按渠道」三张卡。
+  实测回填本机 90 天数据后：`read 2368 / pwsh 2003 / edit 1202 / grep 899`，
+  项目 Top 为 `zenith / harmonycast / dsh-smart-commit / token-lens / ems资源包`。
+- **缓存命中率与口径拆分**：`totals` 新增 `freshInput` / `cacheHitRate`，总览卡把
+  「输入」拆成「新输入 / 缓存读 / 输出」三段并给出 100% 堆叠比例条（旧 `prompt` 口径保留，
+  悬浮窗不受影响）。实测命中率 96.3%，旧 UI 上"输入 611M"里 95.8% 其实是缓存读。
+- **环比**：设置页开始消费宿主一直在下发、却从没被用过的 `prevTotals`，总量/新输入/输出/请求
+  都带 ↑↓ 百分比徽标。
+- **折线/面积图 + 近 90 天区间**：图表形态从「柱状/热力」扩到「柱状/折线/热力」，
+  区间白名单新增 `90d`（与 90 天保留窗口对齐）。
+- **图表模型筛选**：点击模型排行某一行，柱状图/折线图/今日分时都只看该模型（再点取消）。
+- **数据健康一行 + 清空用量账本**：设置页显示 库大小 / 账本行数 / 跨度 / 最后回填时间
+  （点击复制诊断），维护组新增 `POST /api/token-meter/reset`（二次确认）——清空后写
+  `meta.reset_at`，此后回填会跳过该时刻之前的历史，一次重启不会把刚清掉的数据灌回来。
+- **导出与复制**：当前视图一键导出 CSV；一键复制摘要；「最近调用」点击某行即复制该条。
+- **可靠性统计**：`llm/retry`（含 `failure.code`）、`compaction/end`、失败轮次、工具失败计数
+  进入 payload 的 `reliability`，设置页在实时卡下方展示。
+- **设置页渲染冒烟测试**（`test/settings-render.test.mjs`）：用最小 hook 运行时 + jsx 桩直接
+  调用组件函数，喂真实形状的 payload，覆盖 有数据 / 三种图表形态 / 旧 host 缺字段 / 拉取失败。
+
+#### Fixed
+- **首 token 恒显示 `—`**：`assistant/chunk` 在会话文件里 100% 带 `turn/step`，但实时事件流
+  并不保证投递它——实测活跃对话下 `firstTokenCount` 恒为 0 而 `steps`/`llmMs` 正常增长。
+  现在对 4 类流式事件（`assistant/chunk` / `text-chunks` / `reasoning-chunks` /
+  `tool-call-chunks`）广匹配，并把按事件名的分类计数 `live.signalCount` 下发：无样本时明确
+  显示"无样本"并在 tooltip 里列出各事件名计数，便于一眼定位。
+- **「实时」卡的速率名不副实**：`tokPerSec` 是进程启动至今、且只算 LLM 忙碌时间的累计均值，
+  却被当成瞬时速率显示。新增 `live.rate60`（近 60s 输出 token ÷ 墙钟秒数）作为主指标，
+  累计均值降为 tooltip。
+- **图表 0 值画假柱**：`Math.max(8, …)` 让空白日也显示一根 8px 柱，看起来"有消耗"；
+  改为 0 值只留 2px 基线且不配色，并补峰值标注与参考线。
+- **缓存写永远为空段**：宿主 `usage` 只有 `inputTokens/outputTokens/cacheReadTokens`
+  三个字段（实测 `cacheWrite` 恒 0），图例里那一段永远不会出现；改为有值才渲染。
+- **「最近调用」重启后混入 `__system` 行**：hydrate 的查询没过滤 `type`，重启后列表里会出现
+  一堆 "`__system` · 0 → 0"；现在只取 `assistant/message`。
+- **「更新于」用的是客户端时间**：改为服务端 `updatedAt` 并显示「x 分钟前」。
+
+#### Changed
+- 「最近调用」补齐 缓存读 / 耗时 / 项目 三列（`records` 新增 `durationMs`，来自
+  `step/start`→`assistant/message`），`sessionId` 从 8 位改 12 位。
+- **范围偏好统一**：设置页与悬浮窗共用 `LS_RANGE` 并广播 `opencode:range-changed`
+  （此前设置页另存 `oq_settings_range`，两个界面会显示不同时间段）。
+- **图表形态偏好分离**：悬浮窗迷你图只有 柱状/热力 两态，设置页多一个"折线"，继续共用
+  `LS_TM_CHART` 会让"设置页选折线 → 悬浮窗按非 heat 即 bar 渲染"来回打架，
+  因此设置页改用 `oq_settings_chart`（首次使用沿用旧的共享值）。
+- 设置页新增 20s 低频轮询（`version` 未变则跳过 `setState`）：此前只在挂载/切区间/切图时拉，
+  打开面板看到的是"打开那一刻"的快照。
+- `docs/DEVELOPMENT.md` 补「v4 用量维度」「实时指标的口径与自证」「视图偏好」三节。
+
+### 上一轮（用量优化执行计划，详见 `docs/plan-usage-optimization.md`）
+
+#### Fixed
 - **1d"今日分时"混入历史天**（用户可见）：host 的 `realtimeHourly` 由 hydrate 无条件聚合 90 天小时桶
   （实测 77 桶跨 11 天），客户端 1d 分支又没按今天过滤 —— 分时图会画出 59 列跨 11 天、纵轴按全量
   峰值归一，今天的柱子被压得几乎看不见。现在 host 只回填 `HOURLY_KEEP_MS`（2 天）窗口，客户端
@@ -21,7 +78,7 @@
   "半截聚合"当结果返回。现在改成回填未结束就等它（`scanHistoryOnce` 的 in-flight 门把并发请求
   收敛到同一次扫描），并加 `READY_WAIT_MS = 20s` 上限，避免 sessionQuery 卡住时把数据接口一起拖死。
 
-### Changed
+#### Changed
 - 启动/常驻性能：`scanHistory` 的 `readSession` 由串行改为 **4 路并发**（`SCAN_CONCURRENCY`，块间仍保持
   `createdAt` 降序的 90 天边界语义，结果按原顺序摄入以保证去重与水位线推进的确定性）；并新增
   **会话级跳过**——会话最后一次活动时间（`header.updatedAt`，仅接受毫秒级 epoch）≤ 已记录水位线时
