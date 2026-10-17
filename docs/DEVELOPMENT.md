@@ -52,10 +52,72 @@ GET /api/token-meter?range=1d|7d|30d|all[&withChart=1]  → computeUsage() 现�
   客户端侧超时为 30s —— **两者必须保持"客户端 > 服务端"的关系**，否则会把携带完整口径的响应掐掉，
   退回"首屏半截数据"。
 
+## v4 用量维度（工具 / 项目 / 渠道）
+
+`SCHEMA_VERSION = "4"` 起，`events` 增补 `project` / `tool` / `ms` / `provider` 四列
+（`ALTER TABLE`，老库升级前先按 `PRAGMA table_info` 判存在，幂等），并新增两张派生缓存：
+
+| 表 | 维度 | 口径 |
+|---|---|---|
+| `daily_tool` | 工具 | 只统计 `tool/result`：`calls`、`ms`（= `tool/call`→`tool/result` 的墙钟耗时） |
+| `daily_project` | 项目 | 按会话头 `cwd` 的末段（小写）归集；`sessions` 为当日该项目下的会话数 |
+
+- **工具名从哪来**：只在 `tool/call.data.name` 上（实测 `read`/`edit`/`pwsh`/`grep`/`job_output`…）。
+  `tool/call` 本身**不落库**（避免 events 体积 +15%），名字在内存里配对后写到对应的
+  `tool/result` 行上，这样 `daily_tool` 仍可从 `events` 幂等重建。
+- **项目名从哪来**：`session/event` 的 session 对象 → `listSessions().header.cwd` →
+  会话文件目录名（`--D-code-token-lens--` 这种编码，**不可逆**：字面连字符与分隔符都写成 `-`，
+  只作兜底）。项目名统一小写：Windows 大小写不敏感，实测同一目录会同时出现 `Zenith`/`zenith`。
+- **一次性的历史回填**：`enrichDimensions()` 在 `meta.dims_backfill != '1'` 时跑一次，
+  从会话事件流还原上述四列并 `UPDATE`（只补 `NULL`，不碰计数列，因此不会重复计数），
+  再重建两张派生表并重新 hydrate，最后置 `dims_backfill=1`。实测本机 14.7k 条事件约 4s。
+- **渠道维度不落派生表**：`perProviderDay` 在 hydrate 时按 `(day, provider)` 直接聚合 `events`，
+  新事件实时累加（同名模型跨渠道是两笔账，旧实现只留 `model` 会把它们合并）。
+- **`daily_usage` 的 `tools/turns/steps` 仍只落在 `model='__system'` 行**（历史口径，未动）：
+  要按模型看工具/步数请用 `daily_tool` / `tools[]`，不要指望 `daily_usage` 的模型行。
+
+### 清空用量账本
+
+`POST /api/token-meter/reset` 清空 `events` 与三张派生表，并写 `meta.reset_at`；
+此后 `scanHistory` / `scanFilesystemFallback` 的回填下限取 `max(now-90d, reset_at)`，
+否则一次重启就会把刚清掉的历史重新灌回来。**只删本插件自己的账本，不动会话文件。**
+
+## 实时指标的口径与自证
+
+- `live.*` 全部是**本次进程启动至今**的累计值（`msgs`/`toolCalls`/`llmMs`/`toolMs`/首 token 均值），
+  只有 `rate60` 是滑动窗口：近 `RATE_WINDOW_MS`(60s) 内 `assistant/message` 的
+  `outputTokens` ÷ 60s（分母是墙钟时间）。`tokPerSec` 的分母是 LLM 忙碌时间，两者不可混用。
+- **首 token 的坑**：`assistant/chunk` 在会话文件里 100% 带 `turn/step`（实测 3763 条零缺失），
+  但**实时事件流是否投递它无法先验保证**——实测活跃对话下 `firstTokenCount` 恒为 0 而
+  `steps`/`llmMs` 正常增长。因此对 `SIGNAL_EVENT_TYPES`（`assistant/chunk` / `text-chunks` /
+  `reasoning-chunks` / `tool-call-chunks`）做广匹配，并把**按事件名的分类计数**
+  `live.signalCount` 下发：任一名字被投递即可测出首 token 延迟，一个都没投递时
+  设置页会显示"无样本"并在 tooltip 里列出各名字的计数，便于定位。
+- 可靠性计数同样来自事件流：`llm/retry`（含 `failure.code`）、`compaction/end`、
+  `turn/end` 里 `reason.kind==='error'`、`tool/result` 的 `isError`。
+
+## 视图偏好
+
+- **范围**（1d/7d/30d/90d/all）由设置页与悬浮窗**共用** `LS_RANGE`，变更时广播
+  `opencode:range-changed`，两边都监听（此前设置页另存 `oq_settings_range`，两个界面
+  会显示不同时间段）。
+- **图表形态不共用**：悬浮窗迷你图只有 柱状/热力（`loadTmChart`），设置页多一个"折线"，
+  放在同一个 key 会让"设置页选折线 → 悬浮窗按非 heat 即 bar 渲染"来回打架，
+  因此设置页单开 `oq_settings_chart`（首次使用沿用旧的共享值）。
+
 ## 测试
 
 ```sh
 npm run check    # 两个 bundle 的语法检查
 npm test         # node:test：日历窗口 / 水位线去重 / 分档 / home 解析 / 小时桶窗口 / 归一化
+                 #           区间口径 / 维度聚合与回填 / 实时窗口 / 清空账本
+                 #           + 设置页"渲染冒烟"（真的把组件函数跑一遍）
 ```
 CI（`.github/workflows/ci.yml`）在 push 与 PR 上跑同样两条命令，零依赖（`node:sqlite` 用 Node 内置）。
+
+- `test/settings-render.test.mjs` 用一个最小 hook 运行时 + `jsx` 桩直接调用 `SettingsPanel`，
+  并用桩 `fetch` 喂真实形状的 payload：设置页是 800+ 行的单文件组件，任何 undefined 字段
+  都只会在"用户点开设置页"那一刻炸掉，语法检查抓不到。新增卡片/字段时请顺手加断言。
+- 端到端复核（不依赖桌面壳）的做法：把真实 `token-meter.db` 复制到一个临时 `DSH_HOME`，
+  对 `apply(fakeCtx)` 注册的路由直接发请求。这条路径能同时覆盖"老库 v3→v4 迁移 +
+  维度回填 + 三张派生表重建"。
