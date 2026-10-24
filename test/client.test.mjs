@@ -7,6 +7,46 @@ import { loadClientTesting } from "./load-client.mjs";
 const T = await loadClientTesting();
 const { HEAT_LV, heatLvOf, groupTodayHourBuckets, fmtTokens } = T;
 
+// 悬浮窗图表形态的读写闭环：loadTmChart 只认 bar/heat，写入由设置页「小窗口图表」卡片驱动。
+// 历史上这两个 key 拆开之后，悬浮窗的 save 函数变成了没人调用的死代码，
+// 导致热力图在悬浮窗里永远不可达（只能停留在默认柱状）。
+// 注意：写入入口只在设置页，悬浮窗本身是功能展示区、不放配置按钮（不要在这里加回按钮）。
+test("loadTmChart / saveTmChart：默认柱状，热力图可写入并读回，非法值回落 bar", () => {
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  const { loadTmChart, saveTmChart } = T;
+  assert.equal(typeof saveTmChart, "function", "悬浮窗必须有写入入口，否则热力图不可达");
+  assert.equal(loadTmChart(), "bar", "无存储时默认柱状");
+  saveTmChart("heat");
+  assert.equal(loadTmChart(), "heat", "写入热力图后应能读回");
+  saveTmChart("bar");
+  assert.equal(loadTmChart(), "bar", "可切回柱状");
+  mem.set("opencode_quota_tm_chart", "line");
+  assert.equal(loadTmChart(), "bar", "悬浮窗只支持 bar/heat，非法值回落 bar");
+  delete globalThis.localStorage;
+});
+
+test("悬浮窗与设置页的图表偏好互不干扰（两个独立 key）", () => {
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  const { loadTmChart, saveTmChart, loadSettingsChart, saveSettingsChart } = T;
+  saveTmChart("heat");
+  assert.equal(mem.get("opencode_quota_tm_chart"), "heat");
+  assert.equal(mem.has("oq_settings_chart"), false, "悬浮窗不应写设置页的 key");
+  saveSettingsChart("line");
+  assert.equal(loadTmChart(), "heat", "设置页选折线不应把悬浮窗的热力图改掉");
+  assert.equal(loadSettingsChart(), "line", "设置页读回自己的折线选择");
+  delete globalThis.localStorage;
+});
+
 test("load-client：能从 client.js 取到 __testing 出口", () => {
   assert.equal(typeof heatLvOf, "function");
   assert.ok(HEAT_LV >= 5 && HEAT_LV <= 8, "档位数量应在合理区间，实际 " + HEAT_LV);
@@ -60,6 +100,36 @@ test("groupTodayHourBuckets：空输入/无当天数据返回空对象（触发�
   assert.deepEqual(groupTodayHourBuckets(undefined, "2026-10-16"), {});
   assert.deepEqual(groupTodayHourBuckets({}, "2026-10-16"), {});
   assert.deepEqual(groupTodayHourBuckets({ "m::2026-10-01T01": { hour: "2026-10-01T01:00:00.000Z" } }, "2026-10-16"), {});
+});
+
+test("groupTodayHourBuckets：按 localDate 过滤，UTC+8 下本地凌晨的桶不再被丢（回归）", () => {
+  // 旧 host 用 UTC 打 hour 键：本地 2026-10-24 03:00 的桶键是 2026-10-23T19Z，
+  // 只按 hour.slice(0,10) 过滤会把本地 00:00–07:59 整段丢掉（实测 24 小时里只剩 16 个）。
+  // 现在优先用服务端下发的 localDate，因此凌晨桶也必须保留。
+  const today = "2026-10-24";
+  const hourly = {
+    // 本地 00:00（UTC 前一天 16:00）
+    "m-a::2026-10-23T16": { model: "m-a", hour: "2026-10-23T16:00:00.000Z", localDate: today, uncachedInputTokens: 1 },
+    // 本地 03:00（UTC 前一天 19:00）—— 旧实现丢掉的典型样本
+    "m-a::2026-10-23T19": { model: "m-a", hour: "2026-10-23T19:00:00.000Z", localDate: today, uncachedInputTokens: 2 },
+    // 新 host 的本地键形态
+    "m-a::2026-10-24T11": { model: "m-a", hour: "2026-10-24T11:00:00", localDate: today, uncachedInputTokens: 3 },
+    // 真正的昨天：不能混进来
+    "m-a::2026-10-23T15": { model: "m-a", hour: "2026-10-23T15:00:00.000Z", localDate: "2026-10-23", uncachedInputTokens: 999 },
+  };
+  const byHour = groupTodayHourBuckets(hourly, today);
+  assert.equal(Object.keys(byHour).length, 3, "本地今天的 3 个桶都要保留，实际：" + Object.keys(byHour).join(","));
+  const total = Object.values(byHour).reduce((a, list) => a + list.reduce((x, v) => x + v.uncachedInputTokens, 0), 0);
+  assert.equal(total, 6, "昨天那笔 999 不能计入");
+});
+
+test("groupTodayHourBuckets：旧 host 无 localDate 时退回键日期段（向后兼容）", () => {
+  const hourly = {
+    "m::2026-10-16T09": { model: "m", hour: "2026-10-16T09:00:00.000Z", uncachedInputTokens: 10 },
+    "m::2026-10-15T09": { model: "m", hour: "2026-10-15T09:00:00.000Z", uncachedInputTokens: 20 },
+  };
+  const byHour = groupTodayHourBuckets(hourly, "2026-10-16");
+  assert.deepEqual(Object.keys(byHour), ["2026-10-16T09:00:00.000Z"]);
 });
 
 test("fmtTokens：0/无效值不显示为数字", () => {

@@ -23,11 +23,16 @@ DSH 会话事件流 ctx.on("session/event")   ← 实时增量（唯一入口）
 进程内聚合 usage.{perDay,perModel,records,live} + 兼容层 realtimeHourly（小时桶）
         │
         ▼
-GET /api/token-meter?range=1d|7d|30d|all[&withChart=1]  → computeUsage() 现算现发
+GET /api/token-meter?range=1d|7d|30d|90d|all[&withChart=1]  → computeUsage() 现算现发
 ```
 
 - 日期口径一律"本地日"（`dayKeyOf()` = `getFullYear/getMonth/getDate`），DB 侧裁剪用
   `strftime(...,'localtime')` 与之一致。
+- **小时口径也必须是本地**：`hourKeyOf()` 产出 `YYYY-MM-DDTHH`（本地），`realtimeHourly` 的
+  桶键与 `hour` 字段都用它；`hydrateHourlyBuckets` 的 SQL 必须带 `'localtime'`。
+  历史实现用 `toISOString()` 打 UTC 键，UTC+8 下本地 00:00–07:59 的桶日期段落到前一天，
+  被客户端"按本地日过滤"整段丢弃（24 小时只剩 16 个）。桶里另带 `localDate` 供客户端
+  优先按本地日过滤，旧 host 缺该字段时退回键的日期段。
 - 去重靠"每会话水位线 `liveSeqs{sessionSeq,time}` + 复合键 `seenSeq`"：`seq` 只在会话内唯一，
   且存在编号代际重置（历史全局大 seq ↔ 新会话小 seq），所以比较时必须叠时间；`seenSeq`
   守的是"重置后旧事件被重新接受"那条路径，不能只留水位线。
@@ -37,8 +42,10 @@ GET /api/token-meter?range=1d|7d|30d|all[&withChart=1]  → computeUsage() 现�
 ## 存储与降级（踩过坑，务必先读）
 
 - 账本：`<DSH home>/storages/token-meter.db`（`node:sqlite`，WAL，`SCHEMA_VERSION` 驱动迁移）。
-  两张表：`events`（幂等账本，PK `(seq, session_id)`，`INSERT OR IGNORE`）+
-  `daily_usage`（派生缓存，PK `(day, model)`，flush 时按受影响天整分区重建，不 `+=` 累加）。
+  一张事实源 + 派生缓存：`events`（幂等账本，PK `(seq, session_id)`，`INSERT OR IGNORE`）与
+  `meta`（迁移/水位元信息），外加 7 张派生表 `daily_usage` / `daily_tool` / `daily_project` /
+  `daily_session` / `daily_hour` / `daily_reliability` / `daily_retry`（均为派生缓存，
+  flush 时按受影响天**整分区重建**，不 `+=` 累加）。
   写入经 50ms 防抖队列；`beforeExit/exit` 兜底 flush。
 - **home 解析两级**：`process.env.DSH_HOME` → 宿主 loader 提供的 `ctx.get("dshHomePath")("storages")`
   （来源 `@deepseek-ai/dsh-home-paths`，内部即 `DSH_HOME || ~/.dsh`）。
@@ -54,7 +61,7 @@ GET /api/token-meter?range=1d|7d|30d|all[&withChart=1]  → computeUsage() 现�
 
 ## v4 用量维度（工具 / 项目 / 渠道）
 
-`SCHEMA_VERSION = "4"` 起，`events` 增补 `project` / `tool` / `ms` / `provider` 四列
+`SCHEMA_VERSION = "5"` 起，`events` 增补 `project` / `tool` / `ms` / `provider` 四列
 （`ALTER TABLE`，老库升级前先按 `PRAGMA table_info` 判存在，幂等），并新增两张派生缓存：
 
 | 表 | 维度 | 口径 |
@@ -86,7 +93,16 @@ GET /api/token-meter?range=1d|7d|30d|all[&withChart=1]  → computeUsage() 现�
   只作兜底）。项目名统一小写：Windows 大小写不敏感，实测同一目录会同时出现 `Zenith`/`zenith`。
 - **一次性的历史回填**：`enrichDimensions()` 在 `meta.dims_backfill != '1'` 时跑一次，
   从会话事件流还原上述四列并 `UPDATE`（只补 `NULL`，不碰计数列，因此不会重复计数），
-  再重建两张派生表并重新 hydrate，最后置 `dims_backfill=1`。实测本机 14.7k 条事件约 4s。
+  最后重建两张派生表并重新 hydrate，置 `dims_backfill=1`。
+  **按会话分批**（`ENRICH_BATCH_SESSIONS = 24`）：每读满 N 个会话就把收集到的 pairs 落库并释放，
+  内存峰值只与 N 个会话的事件数有关、与历史总规模无关（旧实现攒完所有会话才写，
+  峰值正比于 90 天内全部事件）。单批 UPDATE 再按 `ENRICH_MAX_PAIRS_PER_TXN = 150` 切分，
+  保证绑定变量数不超过 SQLite 老版本的 999 上限。
+  ⚠️ **读取下限只用保留窗口，不掺 `reset_at`**：`reset_at` 只该约束"哪些事件算数"，
+  不该约束"哪些会话需要读"。把它塞进 cut 后，用户一点"清空账本"，cut 就等于清空时刻，
+  所有更早创建的会话都被判越界 → 整轮回填一条都不处理，而 `dims_backfill` 仍被置 1，
+  四个维度永久为空。同理循环内用 `continue` 而非 `break`（降序序列表在 cut 前移后不再保序）。
+  实测本机 2.4k 条事件 / 7 个会话：8ms、applied=1584 行、`daily_project` 重建 9 行。
 - **渠道维度不落派生表**：`perProviderDay` 在 hydrate 时按 `(day, provider)` 直接聚合 `events`，
   新事件实时累加（同名模型跨渠道是两笔账，旧实现只留 `model` 会把它们合并）。
 - **`daily_usage` 的 `tools/turns/steps` 仍只落在 `model='__system'` 行**（历史口径，未动）：
@@ -94,7 +110,8 @@ GET /api/token-meter?range=1d|7d|30d|all[&withChart=1]  → computeUsage() 现�
 
 ### 清空用量账本
 
-`POST /api/token-meter/reset` 清空 `events` 与三张派生表，并写 `meta.reset_at`；
+`POST /api/token-meter/reset` 清空 `events` 与全部 7 张派生表（`daily_usage` / `daily_tool` /
+`daily_project` / `daily_session` / `daily_hour` / `daily_reliability` / `daily_retry`），并写 `meta.reset_at`；
 此后 `scanHistory` / `scanFilesystemFallback` 的回填下限取 `max(now-90d, reset_at)`，
 否则一次重启就会把刚清掉的历史重新灌回来。**只删本插件自己的账本，不动会话文件。**
 
@@ -120,6 +137,12 @@ GET /api/token-meter?range=1d|7d|30d|all[&withChart=1]  → computeUsage() 现�
 - **图表形态不共用**：悬浮窗迷你图只有 柱状/热力（`loadTmChart`），设置页多一个"折线"，
   放在同一个 key 会让"设置页选折线 → 悬浮窗按非 heat 即 bar 渲染"来回打架，
   因此设置页单开 `oq_settings_chart`（首次使用沿用旧的共享值）。
+- **配置入口只在设置页**：悬浮窗是功能展示区，任何"设置/配置"性质的控件（包括图表形态切换）
+  都不放在悬浮窗上。悬浮窗侧只保留 `loadTmChart()` 读取，写入一律走设置页
+  「数据源与通用 → 小窗口 → 小窗口图表」卡片。两处靠 `opencode:tm-chart-changed`
+  事件 + `storage` 事件联动，所以设置页一改，悬浮窗即时跟着变，无需悬浮窗自带入口。
+  历史教训：曾为了让热力图能被发现，在悬浮窗「范围」pills 右侧加过一个 `柱 / 热` 小按钮，
+  被用户指出属于"把配置塞进展示区"，已删除——不要为了"好发现"再往悬浮窗添加配置按钮。
 
 ## 测试
 

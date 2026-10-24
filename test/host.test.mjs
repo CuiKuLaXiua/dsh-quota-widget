@@ -196,7 +196,209 @@ test("hydrateHourlyBuckets：只回填保留窗口内的小时桶（1d 分时图
   db.close();
 });
 
+test("pruneMemoryState：裁掉过期会话的 seenSeq / 水位线 / stepStart / toolStart，保留活跃会话", () => {
+  const DAY2 = 86400000;
+  T.resetUsage();
+  const now = Date.now();
+  // 两个 100 天前的死会话
+  for (const sid of ["old-a", "old-b"]) {
+    for (let i = 0; i < 200; i++) T.seenSeq.add(sid + ":" + i);
+    T.liveSeqs.set(sid, { seq: 200, time: now - 100 * DAY2 });
+    T.sessionMeta.set(sid, { project: sid });
+    T.sessionTitles.set(sid, sid);
+  }
+  // 一个活跃会话
+  for (let i = 0; i < 200; i++) T.seenSeq.add("live-c:" + i);
+  T.liveSeqs.set("live-c", { seq: 200, time: now });
+  T.sessionMeta.set("live-c", { project: "c" });
+  // 未配对的 step/tool 开始时间
+  for (let i = 0; i < 50; i++) T.usage.live.stepStart.set("old-a:1:" + i, now - 100 * DAY2);
+  for (let i = 0; i < 50; i++) T.usage.live.stepStart.set("live-c:1:" + i, now);
+  for (let i = 0; i < 50; i++) T.usage.live.toolStart.set("dead" + i, { t: now - 100 * DAY2, name: "read" });
+  for (let i = 0; i < 50; i++) T.usage.live.toolStart.set("fresh" + i, { t: now, name: "read" });
+
+  const before = { seq: T.seenSeq.size, steps: T.usage.live.stepStart.size, tools: T.usage.live.toolStart.size };
+  assert.equal(before.seq, 600);
+  assert.equal(before.steps, 100);
+  assert.equal(before.tools, 100);
+
+  const res = T.pruneMemoryState(now, { info() {} }, true);
+  assert.ok(!res.skipped, "首次调用不应被节流");
+  assert.equal(T.liveSeqs.size, 1, "死会话的水位线应被删除");
+  assert.ok(T.liveSeqs.has("live-c"), "活跃会话必须保留");
+  assert.equal(T.seenSeq.size, 200, "只剩下活跃会话的 seenSeq");
+  assert.ok(T.seenSeq.has("live-c:5"));
+  assert.ok(!T.seenSeq.has("old-a:5"), "死会话的 seenSeq 应被删除");
+  assert.equal(T.usage.live.stepStart.size, 50, "只保留未过期的 stepStart");
+  assert.equal(T.usage.live.toolStart.size, 50, "只保留未过期的 toolStart");
+  assert.ok(!T.sessionMeta.has("old-a"), "死会话的 sessionMeta 也应释放");
+  assert.ok(!T.sessionTitles.has("old-b"));
+
+  // 节流：5 分钟内重复调用直接跳过
+  const res2 = T.pruneMemoryState(now + 1000, { info() {} });
+  assert.ok(res2.skipped, "5 分钟内应被节流");
+  T.resetUsage();
+});
+
+test("pruneMemoryState：按 day 键裁掉窗口外的维度天，且不改变 1d/7d/30d/90d 读数", () => {
+  const DAY2 = 86400000;
+  T.resetUsage();
+  const now = Date.now();
+  // 200 天 × 3 会话：远超 90 天保留窗口
+  for (let d = 0; d < 200; d++) {
+    const t = now - (200 - d) * DAY2;
+    for (let s = 0; s < 3; s++) {
+      T.ingestEvent("sess-" + d + "-" + s, {
+        type: "assistant/message", time: t,
+        data: { turn: 1, step: 1, message: { source: { model: "m" + (d % 5), provider: "p" } }, usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 0 } },
+      });
+    }
+  }
+  assert.equal(T.usage.perDay.size, 200, "构造 200 天，内存里应有 200 个天键");
+  const before = {
+    "1d": T.computeUsage("1d").totals.total,
+    "7d": T.computeUsage("7d").totals.total,
+    "30d": T.computeUsage("30d").totals.total,
+    "90d": T.computeUsage("90d").totals.total,
+  };
+
+  // force 绕过 5 分钟节流：上一个测试可能刚跑过 prune，节流状态会跨测试残留
+  T.pruneMemoryState(now, { info() {} }, true);
+
+  // 只保留 90 天（与 DB 侧 pruneExpired 的口径一致）
+  assert.ok(T.usage.perDay.size <= 91 && T.usage.perDay.size >= 89, "裁到约 90 天，实际 " + T.usage.perDay.size);
+  assert.equal(T.usage.perHourDay.size, T.usage.perDay.size, "perHourDay 同步裁剪");
+  // 关键：窗口内读数一个都不能变
+  for (const k of Object.keys(before)) {
+    assert.equal(T.computeUsage(k).totals.total, before[k], k + " 窗口读数被裁剪改变了");
+  }
+  T.resetUsage();
+});
+
+// ===== 维度回填（enrichDimensions）：分批 + reset_at 语义 =====
+
+/** 造一个带 events 的内存库，并返回 (db, ctx, 事件数)。
+ *  注意：库里每个会话的 events 用**该会话自己的 seq**（与 sessionQuery 返回一致），
+ *  因为 UPDATE ... WHERE seq=? AND session_id=? 靠这两个键定位。 */
+function makeEnrichFixture(sessionCount, eventsPerSession) {
+  const db = new DatabaseSync(":memory:");
+  db.exec(T.SCHEMA_DDL);
+  const now = Date.now();
+  const ins = db.prepare("INSERT INTO events(seq,time,day,session_id,model,input,output,cache_read,cache_write,type,raw,project,tool,ms,provider,err,num) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+  for (let s = 0; s < sessionCount; s++) {
+    for (let k = 0; k < eventsPerSession; k++) {
+      // seq 从 2 起（与 readSession 返回的 assistant/message 的 seq=2 对齐）
+      ins.run(2 + k, now - 1000, T.dayKeyOf(now), "sess-" + s, "m", 10, 1, 0, 0, "assistant/message", null, null, null, 0, null, 0, 0);
+    }
+  }
+  const headers = [];
+  for (let s = 0; s < sessionCount; s++) headers.push({ header: { id: "sess-" + s, cwd: "D:\\code\\proj-" + s, createdAt: now - 1000 } });
+  const ctx = {
+    get: (n) => (n === "sessionQuery" ? {
+      listSessions: async () => headers,
+      readSession: async (id) => ({
+        session: { id },
+        events: [
+          { seq: 1, time: now - 500, type: "step/start", data: { turn: 1, step: 0 } },
+          { seq: 2, time: now - 100, type: "assistant/message", data: { turn: 1, step: 0, message: { source: { provider: "prov" } }, usage: { inputTokens: 1, outputTokens: 1 } } },
+        ],
+      }),
+    } : undefined),
+  };
+  T.setDbForTesting(db);
+  T.usage.perDay.set(T.dayKeyOf(now), Object.assign(T.emptyAgg(), { requests: 1, total: 11 }));
+  return { db, ctx, now };
+}
+
+test("enrichDimensions：按会话分批落库，结果与一次性写完全一致（分批改造的核心）", async () => {
+  T.resetUsage();
+  // 60 个会话 > ENRICH_BATCH_SESSIONS(24)，必然走多批
+  const { db, ctx } = makeEnrichFixture(60, 3);
+  const logs = [];
+  const applied = await T.enrichDimensions(ctx, { info: (m) => logs.push(m), warn: (m) => logs.push("W:" + m) });
+
+  // 每个会话贡献 1 个 pair（assistant/message），共 60 条
+  assert.equal(applied, 60, "应更新 60 行，实际 " + applied);
+  const withProject = db.prepare("SELECT COUNT(*) n FROM events WHERE project IS NOT NULL AND project<>''").get().n;
+  const withProvider = db.prepare("SELECT COUNT(*) n FROM events WHERE provider IS NOT NULL AND provider<>''").get().n;
+  assert.equal(withProject, 60, "每个会话的 project 都要补上");
+  assert.equal(withProvider, 60, "provider 也要补上");
+  // 分批证据：日志里 batches 应 > 1
+  const batchLine = logs.find((l) => l.includes("batches="));
+  assert.ok(batchLine, "应有汇总日志");
+  const m = batchLine.match(/batches=(\d+)/);
+  assert.ok(m && Number(m[1]) > 1, "60 个会话应分成多批写入，实际 " + (m && m[1]));
+  // 幂等：第二次直接返回 0
+  const again = await T.enrichDimensions(ctx, { info() {}, warn() {} });
+  assert.equal(again, 0, "dims_backfill=1 后不得重复回填");
+  db.close();
+  T.setDbForTesting(null);
+  T.resetUsage();
+});
+
+test("enrichDimensions：点过「清空账本」(reset_at) 后仍能回填，不被 cut 全量拦住", async () => {
+  T.resetUsage();
+  const { db, ctx, now } = makeEnrichFixture(3, 2);
+  // 模拟用户点过清空账本：reset_at = 现在（比所有会话的 createdAt 都新）。
+  // 注意不能用 T.resetUsage()——它会把 perDay 清空，随后 enrich 走"空库跳过"分支，
+  // 测不到我们要测的那条路径。这里直接把 __resetAt 抬到当前时刻。
+  db.prepare("INSERT OR REPLACE INTO meta(k,v) VALUES('reset_at',?)").run(String(now));
+  T.setResetAtForTesting(now);
+  T.usage.perDay.set(T.dayKeyOf(now), Object.assign(T.emptyAgg(), { requests: 1, total: 11 }));
+  const applied = await T.enrichDimensions(ctx, { info() {}, warn() {} });
+  // 关键回归：旧实现把 reset_at 塞进 cut，导致 cut > 所有 createdAt，
+  // 第一个会话就 break → 整轮回填一条都不处理，而 dims_backfill 仍被置 1。
+  assert.ok(applied > 0, "reset_at 之后仍必须补历史维度，实际更新 " + applied + " 行");
+  const withProject = db.prepare("SELECT COUNT(*) n FROM events WHERE project IS NOT NULL AND project<>''").get().n;
+  assert.ok(withProject > 0, "project 维度不能被清空账本永久锁死");
+  db.close();
+  T.setDbForTesting(null);
+  T.setResetAtForTesting(0);
+  T.resetUsage();
+});
+
 // ===== v4 新增：区间口径 / 维度聚合 / 实时速率 / 维度回填 =====
+
+test("hourKeyOf：小时键取本地时区（与 dayKeyOf 同口径），不再用 UTC", () => {
+  // 本地 2026-10-24 03:00 → 键必须是 2026-10-24T03，而不是 toISOString 给出的 10-23T19
+  const t = new Date(2026, 9, 24, 3, 0, 0).getTime();
+  assert.equal(T.hourKeyOf(t), "2026-10-24T03");
+  assert.equal(T.hourKeyOf(t).slice(0, 10), T.dayKeyOf(t), "小时键的日期段必须等于本地日");
+  // 23:xx 也不能越到次日
+  const t2 = new Date(2026, 9, 24, 23, 59, 0).getTime();
+  assert.equal(T.hourKeyOf(t2), "2026-10-24T23");
+  assert.equal(T.hourKeyOf(NaN), "");
+});
+
+test("ingestEvent：realtimeHourly 的桶切到本地小时，且 localDate 可用于按本地日过滤", () => {
+  T.resetUsage();
+  T.realtimeHourly.clear();
+  const local = new Date(2026, 9, 24, 3, 30, 0).getTime(); // 本地凌晨 3:30（UTC 前一天 19:30）
+  T.ingestEvent("s1", { type: "assistant/message", seq: 1, time: local, data: { turn: 1, step: 1, message: { source: { model: "m", provider: "p" } }, usage: { inputTokens: 10, outputTokens: 1, cacheReadTokens: 0 } } });
+  const keys = [...T.realtimeHourly.keys()];
+  assert.equal(keys.length, 1);
+  assert.equal(keys[0], "m::2026-10-24T03", "桶键必须是本地小时：" + keys.join(","));
+  const bucket = T.realtimeHourly.get(keys[0]);
+  assert.equal(bucket.localDate, "2026-10-24");
+  assert.equal(bucket.hour, "2026-10-24T03:00:00", "hour 不带 Z，客户端按本地时间解析才得到 03:00");
+  T.realtimeHourly.clear();
+  T.resetUsage();
+});
+
+test("hydrateHourlyBuckets：从 events 回填的小时键同样是本地时区（SQL 带 localtime）", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`CREATE TABLE events(seq INTEGER, time INTEGER NOT NULL, day TEXT NOT NULL, session_id TEXT NOT NULL, model TEXT NOT NULL, input INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, cache_write INTEGER NOT NULL DEFAULT 0, type TEXT NOT NULL, raw TEXT, PRIMARY KEY(seq, session_id));`);
+  const ins = db.prepare("INSERT INTO events(seq,time,day,session_id,model,input,output,cache_read,cache_write,type,raw) VALUES(?,?,?,?,?,?,?,?,?,?,?)");
+  const local = new Date(2026, 9, 24, 3, 30, 0).getTime();
+  ins.run(1, local, T.dayKeyOf(local), "s1", "m-a", 10, 2, 0, 0, "assistant/message", null);
+  T.realtimeHourly.clear();
+  T.hydrateHourlyBuckets(db, local + 1000);   // 窗口 = 最近 2 天，锚点必须跟着数据日期走
+  const keys = [...T.realtimeHourly.keys()];
+  assert.equal(keys.length, 1);
+  assert.equal(keys[0], "m-a::2026-10-24T03", "回填键必须是本地小时：" + keys.join(","));
+  T.realtimeHourly.clear();
+  db.close();
+});
 
 test("rangeSpec：区间 → 当前/上期窗口天数（90d 无上期，all 不设窗口）", () => {
   assert.deepEqual(T.rangeSpec("1d"), { cur: 1, prev: 1 });
@@ -289,6 +491,73 @@ test("noteProject/projectOf：空值不覆盖已有项目名", () => {
   assert.equal(T.projectOf("s-a"), "demo", "空 cwd 不应把已有项目名抹掉");
   assert.equal(T.projectOf("s-unknown"), "");
   T.sessionMeta.clear();
+});
+
+test("ingestEvent：回填路径传 {live:false} 时不进 live.*（live 口径 = 本次进程启动至今）", () => {
+  T.resetUsage();
+  const now = Date.now();
+  const old = now - 10 * DAY;
+  // 30 条 10 天前的历史，显式声明为回填（回填路径都这么调）
+  for (let i = 0; i < 30; i++) {
+    T.ingestEvent("hist", { type: "assistant/message", seq: i + 1, time: old + i * 1000, data: { turn: 1, step: 1, message: { source: { model: "m", provider: "p" } }, usage: { inputTokens: 1000, outputTokens: 100, cacheReadTokens: 500 } } }, { live: false });
+  }
+  assert.equal(T.usage.live.msgs, 0, "历史回填不得计入本次启动的实时计数");
+  assert.equal(T.usage.live.outputTokens, 0);
+  assert.equal(T.usage.live.outputs60.length, 0, "60s 速率窗口也不应收历史样本");
+  // 实时路径不传 opts
+  T.ingestEvent("live", { type: "assistant/message", seq: 1, time: now, data: { turn: 1, step: 1, message: { source: { model: "m", provider: "p" } }, usage: { inputTokens: 10, outputTokens: 1, cacheReadTokens: 0 } } });
+  assert.equal(T.usage.live.msgs, 1, "实时事件推进 live");
+  assert.equal(T.usage.live.outputTokens, 1);
+  // 但账本口径不受影响：历史照样算进 perDay
+  assert.equal(T.computeUsage("all").totals.requests, 31);
+  T.resetUsage();
+});
+
+test("ingestEvent：实时事件即使时间戳早于启动时刻也计入 live（回填期间/时钟回拨都不能误杀）", () => {
+  T.resetUsage();
+  const now = Date.now();
+  // 回填是启动后 1.2s 才异步跑的：这期间用户真实发出的消息，时间戳同样早于启动时刻。
+  // 若按"time < 启动时刻"判断就整段漏计；现在由调用方声明，实时路径一律计入。
+  T.ingestEvent("s1", { type: "assistant/message", seq: 1, time: now - 5 * 60 * 1000, data: { turn: 1, step: 1, message: { source: { model: "m", provider: "p" } }, usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 0 } } });
+  assert.equal(T.usage.live.msgs, 1, "5 分钟前的实时消息仍应计入 live（旧的按时间判断会漏计）");
+  assert.equal(T.usage.live.outputTokens, 20);
+  // 时钟回拨 1 小时
+  T.resetUsage();
+  T.ingestEvent("s2", { type: "assistant/message", seq: 1, time: Date.now() - 3600 * 1000, data: { turn: 1, step: 1, message: { source: { model: "m", provider: "p" } }, usage: { inputTokens: 5, outputTokens: 1, cacheReadTokens: 0 } } });
+  assert.equal(T.usage.live.msgs, 1, "系统时钟回拨后实时事件仍应计入");
+  T.resetUsage();
+});
+
+test("ingestEvent：轮次按 turn/start 计（turn/end 常缺失），失败轮次仍走 turn/end", () => {
+  T.resetUsage();
+  const t = Date.now();
+  // 真实会话文件形态：有 turn/start，没有 turn/end
+  T.ingestEvent("s1", { type: "turn/start", seq: 1, time: t, data: { turn: 1 } });
+  T.ingestEvent("s1", { type: "step/start", seq: 2, time: t + 1, data: { turn: 1, step: 1 } });
+  T.ingestEvent("s1", { type: "step/end", seq: 3, time: t + 2, data: { turn: 1, step: 1 } });
+  let s = T.computeUsage("1d");
+  assert.equal(s.totals.turns, 1, "只有 turn/start 时轮次也必须为 1（此前恒为 0）");
+  assert.equal(s.totals.steps, 1);
+  // 失败轮次：turn/end 带 reason.kind=error
+  T.ingestEvent("s1", { type: "turn/end", seq: 4, time: t + 3, data: { reason: { kind: "error" } } });
+  s = T.computeUsage("1d");
+  assert.equal(s.totals.turns, 1, "turn/end 不得把轮次重复计一遍");
+  assert.equal(s.reliability.errors, 1, "失败轮次仍来自 turn/end.reason.kind=error");
+  T.resetUsage();
+});
+
+test("computeUsage：models[] 下发 freshInput，且 total = input + output（input 已含缓存读）", () => {
+  T.resetUsage();
+  const t = Date.now();
+  T.ingestEvent("s1", { type: "assistant/message", seq: 1, time: t, data: { turn: 1, step: 1, message: { source: { model: "m1", provider: "p" } }, usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 900 } } });
+  const m = T.computeUsage("1d").models[0];
+  assert.equal(m.freshInput, 100, "freshInput 是新输入，不含缓存读");
+  assert.equal(m.input, 1000, "input 是含缓存读的 prompt 口径");
+  assert.equal(m.cacheRead, 900);
+  assert.equal(m.total, m.input + m.output, "total 不能把 cacheRead 再加一遍（会翻倍）");
+  assert.equal(m.total, 1020);
+  assert.equal(m.total, T.computeUsage("1d").totals.total, "模型行总量应与 totals 对齐");
+  T.resetUsage();
 });
 
 test("ingestEvent：assistant/message 同时进模型/渠道/项目维度，并记录耗时与窗口样本", () => {
@@ -479,12 +748,24 @@ test("computeUsage：hours 是 7×24 矩阵，按本地星期/小时累计", () 
   T.resetUsage();
   const t = new Date(2026, 9, 17, 15, 30).getTime(); // 本地 2026-10-17 15:30（周六）
   T.ingestEvent("s1", { type: "assistant/message", seq: 1, time: t, data: { turn: 1, step: 1, message: { source: { model: "m", provider: "p" } }, usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 0 } } });
-  const s = T.computeUsage("1d");
+  // ⚠️ 必须用 all：hours 按 day 归集，而 1d/7d/30d 的窗口是"以本地今天为终点"的日历窗口。
+  // 这里摄入的是固定历史日 2026-10-17，用 1d 去读，一旦运行日期不是那天就恒为 0
+  //（此前正是因此长期失败，被误记为"本机环境问题"）。范围与数据日期解耦才不依赖运行时钟。
+  const s = T.computeUsage("all");
   assert.equal(s.hours.length, 7);
   assert.equal(s.hours[0].length, 24);
   assert.equal(s.hours[6][15], 110, "周六 15 点应为 100+10");
   const sum = s.hours.reduce((a, row) => a + row.reduce((x, y) => x + y, 0), 0);
   assert.equal(sum, 110);
+  T.resetUsage();
+});
+
+test("computeUsage：hours 在数据落在今天时也能被 1d 读到（日历窗口与星期矩阵不冲突）", () => {
+  T.resetUsage();
+  const now = new Date();
+  T.ingestEvent("s1", { type: "assistant/message", seq: 1, time: now.getTime(), data: { turn: 1, step: 1, message: { source: { model: "m", provider: "p" } }, usage: { inputTokens: 7, outputTokens: 3, cacheReadTokens: 0 } } });
+  const s = T.computeUsage("1d");
+  assert.equal(s.hours[now.getDay()][now.getHours()], 10, "今天的用量应落在对应星期/小时格");
   T.resetUsage();
 });
 
@@ -513,10 +794,11 @@ test("rebuildSession/Hour/ReliabilityPartitions：从 events 幂等重建", () =
   const ins = db.prepare("INSERT INTO events(seq,time,day,session_id,model,input,output,cache_read,cache_write,type,raw,project,tool,ms,provider,err,num) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   ins.run(1, now, day, "s1", "m", 100, 10, 900, 0, "assistant/message", null, "demo", null, 500, "unisound", 0, 0);
   ins.run(2, now, day, "s1", "__system", 0, 0, 0, 0, "tool/result", null, "demo", "read", 20, null, 1, 0);
-  ins.run(3, now, day, "s1", "__system", 0, 0, 0, 0, "turn/end", null, "demo", null, 0, null, 1, 0);
-  ins.run(4, now, day, "s1", "__system", 0, 0, 0, 0, "llm/retry", "TRANSPORT", "demo", null, 0, null, 0, 0);
-  ins.run(5, now, day, "s1", "__system", 0, 0, 0, 0, "compaction/end", null, "demo", null, 0, null, 0, 0);
-  ins.run(6, now, day, "s1", "__system", 0, 0, 0, 0, "command/done", null, "demo", null, 0, null, 0, 420528);
+  ins.run(3, now, day, "s1", "__system", 0, 0, 0, 0, "turn/start", null, "demo", null, 0, null, 0, 0);
+  ins.run(4, now, day, "s1", "__system", 0, 0, 0, 0, "turn/end", null, "demo", null, 0, null, 1, 0);
+  ins.run(5, now, day, "s1", "__system", 0, 0, 0, 0, "llm/retry", "TRANSPORT", "demo", null, 0, null, 0, 0);
+  ins.run(6, now, day, "s1", "__system", 0, 0, 0, 0, "compaction/end", null, "demo", null, 0, null, 0, 0);
+  ins.run(7, now, day, "s1", "__system", 0, 0, 0, 0, "command/done", null, "demo", null, 0, null, 0, 420528);
   T.rebuildSessionPartitions(db, now);
   T.rebuildHourPartitions(db, now);
   T.rebuildReliabilityPartitions(db, now);

@@ -5,9 +5,14 @@
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
     "check": "node --check lib/index.js && node --check lib/client.js",
-    "test": "node --test"
+    "test": "node --test",
+    "test:host": "node --test test/host.test.mjs",
+    "test:client": "node --test test/client.test.mjs test/settings-render.test.mjs"
   },
   "icon": "./icon.svg",
   "author": "dsh-quota-widget contributors",

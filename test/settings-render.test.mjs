@@ -314,6 +314,38 @@ test("设置页渲染冒烟：面板材质默认经典，四个选项齐全，�
   }
 });
 
+test("设置页渲染冒烟：小窗口图表卡片存在，切换写入 opencode_quota_tm_chart 并广播", async () => {
+  const fired = [];
+  globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type) };
+  try {
+    const { panel, reset, store } = await setup({});
+    const tree = await renderTwice(panel, reset);
+    const text = collectText(tree).join(" | ");
+    assert.ok(text.includes("小窗口图表"), "「数据源与通用」应出现「小窗口图表」卡片");
+    assert.ok(text.includes("当月日历"), "卡片说明应讲清热力图=当月日历");
+
+    // 点「热力图」：写入悬浮窗的 key，且广播事件让悬浮窗即时重渲染。
+    // 注意「热力图」这个文案在设置页图表区也存在（那是 oq_settings_chart），
+    // 因此这里不按文案全局查找，而是直接断言「点击后写入的是哪个 key」——
+    // 只要存在任意一个「热力图」按钮能把 opencode_quota_tm_chart 写成 heat 即通过，
+    // 若全都写到 oq_settings_chart，则说明新卡片没接上自己的 setter。
+    const allHeat = findClickable(tree, "").filter((n) => collectText(n.props.children).join("") === "热力图");
+    assert.ok(allHeat.length >= 1, "应能找到「热力图」按钮");
+    fired.length = 0;
+    for (const btn of allHeat) { try { btn.props.onClick(); } catch (e) {} }
+    assert.equal(store.opencode_quota_tm_chart, "heat", "应存在能写入 opencode_quota_tm_chart 的热力图按钮");
+    assert.ok(fired.includes("opencode:tm-chart-changed"), "应广播 tm-chart-changed");
+
+    // 切回柱状
+    fired.length = 0;
+    const allBar = findClickable(tree, "").filter((n) => collectText(n.props.children).join("") === "柱状");
+    for (const btn of allBar) { try { btn.props.onClick(); } catch (e) {} }
+    assert.equal(store.opencode_quota_tm_chart, "bar", "应能切回柱状");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
 test("设置页渲染冒烟：旧 host（缺 tools/projects/health/live.rate60）不应崩", async () => {
   const oldPayload = (range) => {
     const p = payload(range);

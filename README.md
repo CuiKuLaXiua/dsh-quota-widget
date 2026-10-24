@@ -32,7 +32,7 @@ DeepSeek Harness (DSH) 标准插件 — **Opencode / DeepSeek / R4Coder 额度 +
 
 ## 安装
 
-前置：已安装 DeepSeek Harness（Web 或桌面版），Node.js >= 22。
+前置：已安装 DeepSeek Harness（Web 或桌面版），Node.js **>= 22.5**（`node:sqlite` 内置模块的起始版本；22.0–22.4 需 `--experimental-sqlite`，本插件会降级为纯内存模式、不落盘）。桌面版自带运行时（当前为 Node 24），无需另行安装。
 
 ### Web 版
 

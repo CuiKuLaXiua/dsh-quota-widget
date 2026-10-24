@@ -2,6 +2,123 @@
 
 ## [Unreleased]
 
+### 口径与稳定性修复（2026-10-24，一轮全面分析后的收口）
+
+#### Fixed
+- **内存泄漏：四个容器在长期运行的桌面进程里只增不减**（同时修了我在上一轮引入的两个缺陷）：
+  - `seenSeq`：每个摄入过的事件一条 `sid:seq`，此前只在用户点"清空账本"时清空。
+    实测注入 10 万事件 = 10 万条，无上限；
+  - `live.stepStart` / `live.toolStart`：靠 `step/end`、`tool/result` 配对删除，
+    但**中断的步骤/工具调用永远等不到配对事件**（用户切走、点停止、进程崩溃），
+    实测 5000 个未配对 `step/start` 会让容器停在 5000 条；
+  - `usage.perDay` / `perHourDay` / `perSessionDay` 等维度容器：DB 侧 `pruneExpired` 只留 90 天，
+    内存侧却从不裁剪，实测 200 天历史会全部留在内存里。
+    新增 `pruneMemoryState()`：按 90 天保留窗口裁掉过期会话的水位线 / `seenSeq` /
+    未配对的 step、tool 起始记录 / 各维度中窗口外的天。**已验证窗口内读数一字不变**
+    （1d/7d/30d/90d 完全相同，只有 `all` 缩小到 90 天，与 DB 保留口径对齐）。
+    调用点：`flushDb` 之后 + 10 分钟一次的 `unref()` 定时器（内存模式与长期无事件时也能跑）。
+- **`live.*` 口径判定从"比较事件时间"改为"调用方显式声明"**（修我上一轮引入的误判）：
+  上一轮用 `time < LIVE_SINCE` 区分回填与实时，但回填是**启动后 1.2s 才异步跑**的，
+  这期间用户真实发出的消息时间戳同样早于启动时刻 → 被误判为历史、实时计数漏计；
+  系统时钟回拨也会整段误判。现在回填路径（`scanHistory` / fs 兜底 / `enrichDimensions` /
+  `backfillExtra`）显式传 `{ live: false }`，实时事件流不传，语义明确且不受时钟影响。
+- **热更新后全局钩子仍指向旧闭包**（修我上一轮引入的泄漏）：`window.__oqHeatReset` 原先只在
+  第一次 `apply()` 时赋值，插件热更新（DSH 客户端支持，实测改完即可生效）后它仍调用**旧实例**
+  的 `heatTipHide`/`flushPendingHeat`，既操作已卸载的 DOM 节点，又拖住旧闭包不让回收。
+  现在每次 `apply` 都重新赋值（监听器仍只装一次，实测连跑 3 次 apply 时
+  scroll/visibilitychange/pagehide 各只有 1 个监听器，而钩子已指向最新实例）。
+- **悬浮窗的图表切换按钮会触发两遍渲染**：`saveTmChart()` 已广播 `tm-chart-changed` 且本组件
+  已监听，按钮里额外的 `tick++` 是重复的，去掉。（该按钮随后整体删除，见下条。）
+
+#### Changed
+- 测试：host 41 → 44 条（新增内存裁剪、维度裁剪不改窗口读数、实时事件不被时钟误杀），
+  client 13 / settings-render 11 不变。当前全绿：**host 44/44、client 13/13、settings-render 11/11**。
+
+- **悬浮窗的热力图模式无法进入**（用户可见，反馈自实机）：两轮之前把"范围"与"图表形态"两个
+  localStorage key 拆开（`opencode_quota_tm_chart` 给悬浮窗、`oq_settings_chart` 给设置页）时，
+  只保留了悬浮窗侧的**读取**函数 `loadTmChart()`，`saveTmChart()` 从此没有任何调用点，
+  成了死代码——悬浮窗永远停在默认 `bar`，热力图在设置页能选、在悬浮窗里不可达。
+  入口补在**设置页**的「数据源与通用 → 小窗口」组：一张「小窗口图表」卡片（柱状 / 热力图），
+  与「面板材质」「自动刷新」并列，复用 `saveTmChart()` 并广播 `opencode:tm-chart-changed`，
+  悬浮窗监听该事件即时重渲染（跨标签页另由 `storage` 事件兜底）。
+  热力图所需 30 天数据本来就由 `pullMeter(..., withChart=true)` 一直携带，无需额外请求。
+  补了 3 条单测锁住"读写闭环"、"两个 key 互不干扰"与"设置页卡片写入的是悬浮窗的 key"，
+  防止再次退化成单侧死代码。
+- **悬浮窗上不该出现配置按钮**（用户纠正，实机反馈）：上一轮为了让热力图能被发现，
+  在悬浮窗「范围」pills 右侧加了个 `柱 / 热` 切换按钮——这是设计错误。悬浮窗是**功能展示区**，
+  设置、配置类操作统一收敛在设置页，两者不混。该按钮（及 `oq-chart-toggle` 样式钩子、
+  随形态变化的 tooltip 文案）整段删除，`renderTmCompact` 现在只读 `loadTmChart()`。
+  测试同步：`client.test.mjs` 的读写在注释里标明"写入入口只在设置页，不要在这里加回按钮"，
+  断言仍走 `saveTmChart()` 而非 UI 点击，因此删按钮不影响用例；设置页卡片的渲染冒烟
+  （settings-render 11/11）保持不变。
+- **1d 分时图丢掉本地 00:00–07:59 共 8 小时**（用户可见）：Host 用 `toISOString()` 打 **UTC** 小时键，
+  客户端却按**本地日**过滤（`hour.slice(0,10) !== localDay`），UTC+8 下凌晨的桶日期段落到前一天，
+  被整段丢弃（构造全天 24 小时实测只剩 16 列）。现在统一为本地小时：
+  新增 `hourKeyOf()`，`realtimeHourly` 的键与 `hour` 字段都用本地值（不再带 `Z`）；
+  `hydrateHourlyBuckets` 的 SQL 补 `'localtime'`（此前与 `rebuildHourPartitions` 的 localtime 口径不一致，
+  重启前后、分时图与时段热力图各说一套）；桶内新增 `localDate`，客户端优先按它过滤，
+  旧 host 缺该字段时退回键的日期段（向后兼容）。
+- **轮次恒为 0**：`turns` 只统计 `turn/end`，而真实会话文件里只有 `turn/start`（本机 732 条记录、
+  0 条 `turn/end`），界面上出现"步数 202 / 轮次 0"。改为按 `turn/start` 计数，`turn/end` 仍单独
+  用于失败轮次与可靠性口径；三处派生表重建同步改口径，并新增 `applyLegacyTurnFallback()`
+  为"整天没有 turn/start"的旧数据退回按 `turn/end` 计数。
+- **"项目排行"对活跃会话恒为空**：实时路径只读 `session.cwd`，而 DSH 把 cwd 放在
+  **`session.header.cwd`**。实测当日 134 条回复全部落 `—` 桶，只有重启重扫会话文件那条路能补上。
+  现在按 `header.cwd` → 顶层 `cwd` 兜底，并顺带从 `header.title` 取一次标题。
+- **`live.*` 被历史回填污染**：`live` 口径写的是"本次进程启动至今"，但回填与实时走同一个
+  `ingestEvent`。实测 30 条 10 天前的事件就能让 `live.msgs=31`、`outputTokens=3001`。
+  新增 `LIVE_SINCE` 闸门，早于启动时刻的事件只进账本与维度聚合，不推进 live 计数
+  （`stepStart` / `toolStart` 这类配对缓存不受影响，否则回填出的工具名与耗时会变空）。
+- **`models[]` 字段歧义**：`input` 已含缓存读、`total = input + output`，但只下发
+  `input/cacheRead` 会让消费方按名字相加得到翻倍的总量。新增 `freshInput`（= 新输入，不含缓存读），
+  与 `totals.freshInput` 同名同义；客户端总量兜底抽成 `totalsTotalOf()`，旧 host 缺 `prompt` 时
+  用 `freshInput + cache_read + completion` 计算。
+- **设置页每敲一个字符触发 3 个上游请求**：`onInput` → `update()` → 广播 `opencode:config-changed`
+  → 悬浮窗 `reload()` → `Promise.all([opencode, deepseek, r4coder])`。粘贴 40 位 key ≈ 120 个请求。
+  新增 `update(patch, {quiet:true})`：本地状态与 localStorage 仍即时写入，只有"广播 + 重置退避"
+  被推迟到输入停顿 600ms（`onBlur` 立即 flush）。
+- **悬停标志泄漏导致轮询数据冻结**：`isHeatHovering` 只在 `heatTipHide()` 复位，组件卸载
+  （关小窗 / 切材质重注册）时无人调用，标志永远为 true，`pendingTmData` 持续缓存而
+  `flushPendingHeat()` 再不执行。新增全局 `window.__oqHeatReset`，在 `visibilitychange`（隐藏）、
+  `pagehide` 与重新 apply 时强制复位并冲掉缓存。
+- **GSAP 加载无在飞记忆**：CDN 不可达时每次调用都 `appendChild` 一个新 `<script>`，
+  而调用点有三个在轮询/渲染路径上。改为"共享等待者队列 + 失败冷却 5 分钟"：
+  实测 100 次调用只发 1 个请求，50 个调用方全部收到 `null` 回调、走纯 CSS 降级。
+- **顶层 scroll 监听重复叠加**：`apply()` 作用域的滚动监听既不移除也无幂等位，
+  插件重载/HMR 每次再装一个。改用 `window.__oqHeatScrollBound` 保证全局只装一次。
+- **必红的时间炸弹测试**：`test/host.test.mjs` 用硬编码 2026-10-17 摄入却读 `computeUsage("1d")`
+  （窗口是"本地今天"），只能在写入当天通过。改为 `range:"all"` 并补一条"数据落在今天时
+  1d 也能读到"的用例。**此前 CHANGELOG 把它记为"本机环境问题、与改动无关"是错的**，
+  它在本机与 CI 上都会稳定失败。
+
+#### Changed
+- **`enrichDimensions` 改为按会话分批落库**（`ENRICH_BATCH_SESSIONS = 24`）：旧实现把 90 天内
+  所有会话的事件都攒进一个 `pairs` 数组，读完才写，内存峰值与"历史事件总数"成正比
+  （几十万行时明显卡顿）。现在每读满 N 个会话就落库并释放，峰值只与 N 个会话相关；
+  单批 UPDATE 再按 `ENRICH_MAX_PAIRS_PER_TXN = 150` 切分，避免超过 SQLite 老版本
+  999 个绑定变量的上限。派生表重建仍放在全部批次之后统一做一次，避免中途得到半截结果。
+  实测真实账本 2.4k 条事件 / 7 会话：**8ms、applied=1584 行、daily_project 重建 9 行**。
+- **点过「清空账本」会让维度回填永久失效**（本次排查 `enrichDimensions` 时发现的真 bug）：
+  回填下限原本写成 `Math.max(now - 90d, __resetAt)`，而 `reset_at` 是"清空账本的时刻"，
+  于是用户一旦清过账本，`cut` 就等于清空时刻，**所有更早创建的会话都被判为越界**。
+  更糟的是循环用的是 `break`（依赖 listSessions 的 createdAt 降序），第一个会话就终止整轮，
+  而 `dims_backfill` 仍被置 1 —— 结果 `project` / `tool` / `ms` / `provider` 四个维度永久为空，
+  且因为标记已置 1 再也不会重试。现在读取下限只用保留窗口（`reset_at` 的语义是"哪些事件算数"，
+  由 UPDATE 的幂等性保证，不该用来决定"哪些会话要读"），循环改 `continue`。
+  新增 2 条测试：分批结果与一次性写一致（60 会话 > 24，断言 batches>1）、
+  `reset_at` 之后仍能回填。
+- `package.json` 新增 `engines.node >= 22.5.0`（`node:sqlite` 的真实起始版本）与
+  `test:host` / `test:client` 分开的脚本；README 的 "Node >= 22" 更正为 ">= 22.5"，
+  并注明桌面版自带 Node 24 运行时。
+- `docs/DEVELOPMENT.md` 更正：`SCHEMA_VERSION` 为 `"5"`（原写 4）、表数量（1 事实源 + 1 元信息 +
+  7 派生表，原写"两张"）、区间白名单补 `90d`、清空账本删 7 张派生表（原写三张），
+  并新增"小时口径必须是本地"一节。
+- 测试：host 34 → 46 条（小时键本地化、回填不进 live、轮次口径、models 字段语义、
+  内存裁剪、实时不被时钟误杀、维度回填分批与 reset_at 语义），
+  client 9 → 13 条（UTC+8 凌晨桶回归、旧 host 无 localDate 的兼容、
+  小窗图表读写闭环），settings-render 10 → 11 条（「小窗口图表」卡片写入正确 key）。
+  当前全绿：**host 46/46、client 13/13、settings-render 11/11**。
+
 ### 悬浮面板材质：经典（默认）+ 液态玻璃 / 亚克力 / 哑光纸（2026-10-21，样板见 `docs/mockups/panel-materials.html`）
 
 #### Added
@@ -28,8 +145,11 @@
   时间线 / 环形进度轨道等硬编码白色的部件。
 
 #### 已知
-- `test/host.test.mjs:478`（hours 7×24 矩阵按本地星期累计）在本机失败，
-  与本次改动无关（只改了 `lib/client.js`，host 侧未动；断言期望周六 15 点为 110、实得 0）。
+- ~~`test/host.test.mjs:478`（hours 7×24 矩阵按本地星期累计）在本机失败，
+  与本次改动无关（只改了 `lib/client.js`，host 侧未动；断言期望周六 15 点为 110、实得 0）。~~
+  **【2026-10-24 更正】** 该结论是错的：测试用硬编码的 2026-10-17 摄入，却读 `computeUsage("1d")`
+  （窗口为"本地今天"），因此只能在写入当天通过，之后在本机与 CI 上都稳定失败。
+  已在 [Unreleased] 的"口径与稳定性修复"里改为 `range:"all"` 并补回归用例。
 
 ### 用量统计外观：五模块 A/B/C 可切换（2026-10-17，详见 `docs/design-usage-ui.md`）
 
