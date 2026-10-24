@@ -144,12 +144,178 @@ GET /api/token-meter?range=1d|7d|30d|90d|all[&withChart=1]  → computeUsage() �
   历史教训：曾为了让热力图能被发现，在悬浮窗「范围」pills 右侧加过一个 `柱 / 热` 小按钮，
   被用户指出属于"把配置塞进展示区"，已删除——不要为了"好发现"再往悬浮窗添加配置按钮。
 
+## 补录缺失会话（importMissingSessions）
+
+与 `repairProjects` 完全不同的操作，**不要混为一谈**：
+
+| | 补齐历史维度 | 补录缺失会话 |
+|---|---|---|
+| 做什么 | 改已有行的 `project` 等列 | 把磁盘上整条缺失的会话摄入 |
+| 会新增行吗 | **不会** | **会** |
+| 会改总用量吗 | **不会** | **会** |
+| 幂等依据 | 已填的行不再是 NULL | 按 `session_id` 判重 |
+| 需要确认 | 直接点 | 先「统计待补录」→ 手输「补录」 |
+
+### 预估口径必须与 computeUsage 完全一致
+
+这是最容易错也最贵的一条。`computeUsage` 的 `totals.total` 是：
+
+```
+total = (inputTokens + cacheReadTokens) + outputTokens
+```
+
+第一版预览只算了 `inputTokens + outputTokens`，漏掉 cacheRead。agent 场景下
+cacheRead 通常是大头（本机 6,675 万 tokens 里绝大部分是它），于是：
+
+```
+预览说  +15,918,265   （+8.0%）
+实际    +66,750,788   （+33.5%）
+```
+
+差了 4 倍，预览完全失去意义。现在 preview 与 import 用同一个表达式，
+实测预览 `266,084,217` = 实际 `266,084,217`，**差 0**。
+
+回归保护：`test/host.test.mjs` 的「importMissing：预览只读…」把 cacheRead 从
+任一处去掉都会立刻变红（已验证）。**改这两个函数时请一起改，并重跑该用例。**
+
+### 空会话要跳过
+
+只有配置类事件（`session` / `permission/preset` / `sandbox/mode` / `approval/policy`）
+的会话文件没有用量，`usageEventsOf` 会返回空数组，因此不计入缺失列表。
+本机 30 个"缺失"里有 3 个属于这类，真正的补录目标是 27 个——
+界面上看到的数字应该是 27 而不是 30。
+
+### 会话根目录
+
+`sessionRoots()` 与 `scanFilesystemFallback` 同口径：只认本进程的 `DSH_HOME`，
+另外补 `__homeStorages` 的上级（桌面版不设 `DSH_HOME` 环境变量）。
+⚠️ 拼路径要逐段 `joinPath`，不能写 `joinPath(h, "profiles/web/sessions")`——
+`joinPath` 按"任一参数是否含 `\\`"选分隔符，Windows 下会拼出混合分隔符。
+
+## 补历史维度（repairProjects）
+
+有一段时间实时路径只读 `session.cwd`，而 DSH 把 cwd 放在 `session.header.cwd`，
+那批行落库时 `project` 全是 NULL（本机实测 1,124 行落进 `—` 桶）。
+`repairProjects()` + 设置页「补齐历史维度」卡片负责按需补一次。
+
+### 铁律：只 UPDATE，绝不新增行
+
+**不要用 `enrichDimensions` 来做这件事。** 它走 `scanFilesystemFallback`，而那条路径
+除了给 `__enrichSink` 收集维度，还会正常 `ingestEvent`——等于把磁盘上从未入库的会话
+全部灌进账本。实测后果：
+
+```
+补齐前  3,186 行    总量 186,616,699
+补齐后  6,972 行    ← "补项目"把总用量翻了一倍多
+```
+
+所以 `repairProjects` 只做：
+
+```sql
+UPDATE events SET project=? WHERE session_id=? AND (project IS NULL OR project='')
+```
+
+改完 `rebuildProjectPartitions` + `hydrateDimensionTables`，不碰任何计数列。
+验收标准就两条：**行数不变、总量不变**（测试里都有断言）。
+
+### cwd 的三级来源
+
+1. `sessionQuery.readSession(id).session.cwd` —— 权威，无需解压；
+2. 会话文件头的 `cwd` —— 要解压 zstd（`decompressMultiFrame`），只在 1 拿不到时用；
+3. 目录名反解（`--D-code-foo--` → `D:\code\foo`）—— 最后兜底。
+
+三级都拿不到的行保持 `—`，返回值里用 `projectNull` 如实告诉界面还剩多少行。
+
+### 幂等
+
+已补的行不再是 NULL，天然被 `WHERE` 排除，因此第二次执行 `updated=0`。
+这让它可以安全重复点，不需要额外状态位。
+
+## 回填代次闸门
+
+清空账本必须能打断**正在进行中**的回填，两侧都要挡：
+
+| 侧 | 位置 | 做法 |
+|---|---|---|
+| 写 | `flushDb` | 入口记 `__ledgerGen`，拿到写锁后再比一次，不一致 `ROLLBACK` 并丢弃整批 |
+| 读 | `scanHistory` | 每个块边界 + 每次 `readSession` 返回后比一次，不一致立即中止 |
+| 读 | `scanFilesystemFallback` | 接受 `genAtStart` 参数，每读一个文件比一次 |
+
+只挡写入端是不够的：清空时若 `scanHistory` 正跑到一半，本轮 `cut` 是旧值，
+剩余会话的事件时间戳都在它之后，会被正常摄入——库里就又有数据了。
+
+验证方式：临时把 `scanHistory` 里两处 `genStale()` 判断改成 `false &&`，
+`test/host.test.mjs` 的「扫描途中清空账本」应立即变红。改动这条逻辑后请重跑一次这个实验。
+
+## 清空用量账本
+
+独立于其它维护操作的一张卡片（设置页「数据源与通用 → 维护 → 清空用量账本」）。
+设计与实现上有几条**不能省**的约束，都是踩过的坑：
+
+### 语义
+
+`clearUsageLedger(logger, { scope, cut, project, backup })`，三种范围：
+
+| scope | 删什么 | 历史下限 |
+|---|---|---|
+| `all` | `events` 全清 + 7 张派生表全清 | `reset_at = now` |
+| `before` | `events WHERE time < cut`，然后 `rebuildAllPartitions` | `reset_at = max(旧值, cut)` |
+| `project` | `events WHERE project = ?`，然后 `rebuildAllPartitions` | 不动 `reset_at`，改用项目墓碑 |
+
+`reset_at` 是"历史下限"：此后任何回填都跳过这一刻之前的历史，否则一次重启就会
+把刚清掉的历史原样灌回来。
+
+### 项目墓碑（`meta.suppress_projects`）
+
+按项目清空**不能只删行**：会话文件还在，下一次重启的全量回填会把历史重新灌进来。
+墓碑按"项目 + 清空时刻"生效，`ingestEvent` 入口据此拦掉该项目在清空时刻**之前**的事件；
+清空之后的新活动必须照常记账（否则等于把这个项目永久拉黑）。
+
+### 队列代次闸门（`__ledgerGen`）
+
+`resetUsage` 清空内存容器时**必须同时倒空 `__eventsQueue`**，否则：
+清空瞬间还在 50ms 防抖队列里的最后一批事件会在清空之后被 `flushDb` 写回
+（实测清空后 `events=0`，300ms 后又变回 1，且永久残留）。
+`flushDb` 因此记下入口代次，拿到写锁后再比一次，不一致就 `ROLLBACK` 并丢弃整批——
+定时器到点、`beforeExit`/`exit` 钩子又 flush 一次，都写不回去。
+
+### 失败必须是失败
+
+旧实现是"报了假成功"级别的缺陷：DB 不可用时只 `logger.warn`，仍返回
+`200 {ok:true, cleared:0}`，界面弹「已清空（0 行）」。用户以为清了，重启后数据全回来。
+现在 DB 句柄丢失（且 `__dbPath` 存在）→ `ok:false, error:"store-unavailable"` → 端点 500。
+**纯内存模式（`__dbPath` 为空）单独区分**：此时"清空内存"就是清空的全部，
+如实 `ok:true` 但标 `persistent:false`。改这条时注意别把内存模式误判成失败。
+
+### 快照
+
+- 用 `VACUUM INTO`（SQLite 官方在线一致性快照），**必须在事务之前**执行
+  （`cannot VACUUM from within a transaction`）。
+- 清空前的快照里必须有数据，所以先拍快照再删；但那时还不知道"删了多少行"，
+  所以 `.json` 旁注分两次写（`makeBackup` 写范围与时刻，`updateBackupSidecar` 删完补行数）。
+- 文件名只到秒，同一秒内连续清空会撞车（`VACUUM INTO` 不覆盖已有文件）→
+  同名就顺延 `-2`/`-3`…。这条是我端到端跑第二遍时才炸出来的。
+- 只保留最近 10 份（`BACKUP_KEEP_MAX`），按 mtime 倒序裁。
+
+### 破坏性端点的一次性 nonce
+
+`localGuard` 在缺 `Sec-Fetch-Site` 头时是**放行**的（非浏览器请求正常情况），
+因此本机任意进程一个空 `POST /api/token-meter/reset` 就能清库。
+现在 `/reset` 要求 `x-reset-token` 头（或 `?token=`），令牌由
+`POST /api/token-meter/reset-token` 下发，60s 有效、**用后即焚**（防重放）。
+
+### 磁盘回收
+
+`DELETE` 只把页放进空闲表，文件不会变小。清空后跑 `VACUUM` +
+`wal_checkpoint(TRUNCATE)`；`VACUUM` 失败不算致命（数据已删），但要如实回报
+`vacuum.ok:false`，不能假装回收了。
+
 ## 测试
 
 ```sh
 npm run check    # 两个 bundle 的语法检查
 npm test         # node:test：日历窗口 / 水位线去重 / 分档 / home 解析 / 小时桶窗口 / 归一化
-                 #           区间口径 / 维度聚合与回填 / 实时窗口 / 清空账本
+                 #           区间口径 / 维度聚合与回填 / 实时窗口 / 清空账本（范围/墓碑/快照/nonce）
                  #           + 设置页"渲染冒烟"（真的把组件函数跑一遍）
 ```
 CI（`.github/workflows/ci.yml`）在 push 与 PR 上跑同样两条命令，零依赖（`node:sqlite` 用 Node 内置）。

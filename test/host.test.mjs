@@ -824,3 +824,580 @@ test("rebuildSession/Hour/ReliabilityPartitions：从 events 幂等重建", () =
   db.close();
 });
 
+// ===== 清空用量账本：范围 / 墓碑 / 队列回魂 / 假成功 / 快照 / nonce =====
+/** 造一个能走真实 ingest→flush 路径的内存库 */
+function makeLedger() {
+  const db = new DatabaseSync(":memory:");
+  db.exec(T.SCHEMA_DDL);
+  T.setDbForTesting(db);
+  T.clearMemoryState();
+  T.setResetAtForTesting(0);
+  T.setSuppressedForTesting([]);
+  return db;
+}
+/** 摄入一条 assistant/message（走真实内存聚合 + 写队列） */
+function ingestOne(sid, project, daysAgo, tokens, seq) {
+  if (project) T.noteProject(sid, project);
+  T.ingestEvent(sid, {
+    seq: seq == null ? 1 : seq,
+    time: Date.now() - daysAgo * 86400000,
+    type: "assistant/message",
+    data: { usage: { inputTokens: tokens, outputTokens: 1, cacheReadTokens: 0 }, turn: 1, step: 1 },
+  }, { live: false });
+}
+const quiet = { info() {}, warn() {} };
+
+test("清空账本：清空瞬间还在写入队列里的事件不得在清空后「回魂」", async () => {
+  const db = makeLedger();
+  ingestOne("s1", "D:\\code\\a", 1, 10);
+  T.flushDbForTesting();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, 1);
+  // 再摄入一条但**不等 flush**（50ms 防抖窗口内），立刻清空
+  ingestOne("s1", "D:\\code\\a", 1, 20, 2);
+  assert.ok(T.getQueuedCount() > 0, "第二条应仍在队列里（这正是回魂的来源）");
+  const r = T.clearUsageLedger(quiet, { scope: "all", backup: false });
+  assert.ok(r.ok);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, 0, "清空后库必须为空");
+  // 模拟防抖定时器到点（以及 exit 钩子再 flush 一次）：代次闸门必须让这批发作废
+  T.flushDbForTesting();
+  T.flushDbForTesting();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, 0, "清空后不得被旧队列写回（回魂）");
+  assert.equal(T.getQueuedCount(), 0, "队列必须被倒空");
+  db.close();
+  T.setDbForTesting(null);
+});
+
+test("清空账本：库句柄丢失时必须如实报错，不能返回假成功", () => {
+  const db = makeLedger();
+  ingestOne("s1", "D:\\code\\a", 1, 10);
+  T.flushDbForTesting();
+  // 场景 A：有库路径但句柄为空 = 库初始化失败 → 必须失败
+  T.setDbPathForTesting("D:\\tmp\\some.db");
+  T.setDbForTesting(null);
+  const bad = T.clearUsageLedger(quiet, { scope: "all", backup: false });
+  assert.equal(bad.ok, false, "库不可用却返回 ok 就是「界面说清了、数据还在」");
+  assert.equal(bad.error, "store-unavailable");
+  // 场景 B：纯内存模式（无库路径）→ 清空内存就是全部，如实 ok 但标 persistent:false
+  T.setDbPathForTesting(null);
+  const mem = T.clearUsageLedger(quiet, { scope: "all", backup: false });
+  assert.equal(mem.ok, true, "纯内存模式应成功");
+  assert.equal(mem.persistent, false, "必须标明未落盘");
+  db.close();
+});
+
+test("清空账本：按项目清空只删该项目，并留墓碑阻止回填把历史拉回", () => {
+  const db = makeLedger();
+  ingestOne("s-a", "D:\\code\\proja", 10, 100);
+  ingestOne("s-a2", "D:\\code\\proja", 2, 300, 2);
+  ingestOne("s-b", "D:\\code\\projb", 10, 200, 3);
+  T.flushDbForTesting();
+  const before = db.prepare("SELECT COUNT(*) n FROM events").get().n;
+  assert.equal(before, 3);
+
+  const r = T.clearUsageLedger(quiet, { scope: "project", project: "proja", backup: false });
+  assert.ok(r.ok, "按项目清空应成功：" + r.error);
+  assert.equal(r.cleared, 2, "只应删掉 proja 的两条");
+  assert.equal(r.remaining, 1, "projb 必须保留");
+  const left = db.prepare("SELECT DISTINCT project FROM events").all().map((x) => String(x.project));
+  assert.deepEqual(left, ["projb"], "剩下的只能是 projb");
+  // 墓碑已持久化
+  const raw = db.prepare("SELECT v FROM meta WHERE k='suppress_projects'").get();
+  assert.ok(raw && String(raw.v).includes("proja"), "墓碑必须写进 meta 才能跨重启生效");
+  // 内存侧也要同步：proja 不能还挂在 perProjectDay 里
+  assert.equal(T.usage.perProjectDay.has("proja"), false, "内存维度不能被漏掉");
+  assert.equal(T.usage.perProjectDay.has("projb"), true);
+
+  // 回填另一条 proja 的历史（清空时刻之前）→ 被墓碑拦住
+  const n0 = db.prepare("SELECT COUNT(*) n FROM events").get().n;
+  ingestOne("s-a", "D:\\code\\proja", 3, 999, 99);
+  T.flushDbForTesting();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, n0, "墓碑必须拦住清空前的历史回填");
+
+  // 清空之后同一个项目的新活动必须照常记账
+  T.noteProject("s-a", "D:\\code\\proja");
+  T.ingestEvent("s-a", { seq: 100, time: Date.now() + 5000, type: "assistant/message", data: { usage: { inputTokens: 7, outputTokens: 1 }, turn: 1, step: 1 } }, { live: false });
+  T.flushDbForTesting();
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, n0 + 1, "清空后的新活动必须记账");
+  db.close();
+  T.setDbForTesting(null);
+  T.setSuppressedForTesting([]);
+});
+
+test("清空账本：按时间清空只裁更早的部分，并把 reset_at 推到裁剪点", () => {
+  const db = makeLedger();
+  const now = Date.now();
+  ingestOne("s-t", "D:\\code\\t", 40, 40, 1);
+  ingestOne("s-t", "D:\\code\\t", 20, 20, 2);
+  ingestOne("s-t", "D:\\code\\t", 1, 1, 3);
+  T.flushDbForTesting();
+  const cut = now - 30 * 86400000;
+
+  const pv = T.resetPreview({ scope: "before", cut: cut });
+  assert.ok(pv.ok, "预览应成功");
+  assert.equal(pv.events, 3);
+  assert.equal(pv.target, 1, "只有 40 天前那条在裁剪点之前");
+  assert.equal(pv.remaining, 2);
+
+  const r = T.clearUsageLedger(quiet, { scope: "before", cut: cut, backup: false });
+  assert.ok(r.ok, "按时间清空应成功：" + r.error);
+  assert.equal(r.cleared, 1);
+  assert.equal(r.remaining, 2);
+  assert.equal(T.getResetAt(), cut, "reset_at 应推到裁剪点，否则下次重启会把裁掉的拉回来");
+  // 剩余两天的派生表必须按剩余事件重算
+  const days = db.prepare("SELECT day FROM daily_usage GROUP BY day").all().map((x) => String(x.day));
+  assert.equal(days.includes(T.dayKeyOf(now - 40 * 86400000)), false, "被裁掉那天的派生行必须消失");
+  assert.equal(days.includes(T.dayKeyOf(now - 20 * 86400000)), true, "保留的天必须还在");
+  db.close();
+  T.setDbForTesting(null);
+  T.setResetAtForTesting(0);
+});
+
+test("清空账本：预览给出将要删除的行数与项目候选（确认前可判断）", () => {
+  const db = makeLedger();
+  ingestOne("s-a", "D:\\code\\alpha", 5, 100);
+  ingestOne("s-b", "D:\\code\\beta", 6, 200, 2);
+  T.flushDbForTesting();
+  const pv = T.resetPreview({ scope: "all" });
+  assert.ok(pv.ok);
+  assert.equal(pv.events, 2);
+  assert.equal(pv.target, 2);
+  assert.equal(pv.remaining, 0);
+  assert.equal(pv.days, 2);
+  assert.ok(pv.firstDay && pv.lastDay, "应给出日期跨度");
+  const names = pv.projects.map((p) => p.project).sort();
+  assert.deepEqual(names, ["alpha", "beta"], "项目候选应按行数排序列出");
+  assert.equal(pv.projects.find((p) => p.project === "alpha").events, 1);
+  db.close();
+  T.setDbForTesting(null);
+});
+
+test("清空账本：非法范围/缺参数一律拒绝，且不碰数据", () => {
+  const db = makeLedger();
+  ingestOne("s1", "D:\\code\\a", 1, 10);
+  T.flushDbForTesting();
+  assert.equal(T.clearUsageLedger(quiet, { scope: "weird", backup: false }).error, "bad-scope");
+  assert.equal(T.clearUsageLedger(quiet, { scope: "before", backup: false }).error, "bad-cut");
+  assert.equal(T.clearUsageLedger(quiet, { scope: "project", backup: false }).error, "bad-project");
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, 1, "被拒绝的调用不得删数据");
+  db.close();
+  T.setDbForTesting(null);
+});
+
+test("清空账本：VACUUM 回收磁盘，且清理后 freelist 归零", () => {
+  const db = makeLedger();
+  for (let i = 0; i < 200; i++) ingestOne("s-big", "D:\\code\\big", 1, 1000, i + 1);
+  T.flushDbForTesting();
+  const pagesBefore = Number(db.prepare("PRAGMA page_count").get().page_count) || 0;
+  const r = T.clearUsageLedger(quiet, { scope: "all", backup: false });
+  assert.ok(r.ok);
+  assert.ok(r.vacuum && r.vacuum.ok, "VACUUM 应成功：" + JSON.stringify(r.vacuum));
+  const pagesAfter = Number(db.prepare("PRAGMA page_count").get().page_count) || 0;
+  assert.ok(pagesAfter < pagesBefore, `VACUUM 后页数应下降（${pagesBefore} → ${pagesAfter}）`);
+  assert.equal(Number(db.prepare("PRAGMA freelist_count").get().freelist_count) || 0, 0, "空闲页应被回收");
+  db.close();
+  T.setDbForTesting(null);
+});
+
+test("清空账本：nonce 一次性、过期作废（破坏性端点的防重放）", () => {
+  const a = T.resetTokenNext();
+  assert.ok(a.token && a.expiresAt > Date.now());
+  assert.equal(T.resetTokenCheck(a.token), true, "首次使用应通过");
+  assert.equal(T.resetTokenCheck(a.token), false, "同一令牌不得用第二次（防重放）");
+  assert.equal(T.resetTokenCheck(""), false);
+  assert.equal(T.resetTokenCheck("not-a-token"), false);
+  const b = T.resetTokenNext();
+  assert.notEqual(b.token, a.token, "每次下发都应是新令牌");
+  assert.equal(T.resetTokenCheck(b.token), true);
+});
+
+test("清空账本：快照落盘为独立文件，列表能读回并可轮转", async () => {
+  const { mkdtempSync, existsSync, statSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(tmpdir(), "oq-backup-"));
+  const dbPath = join(dir, "token-meter.db");
+  const fsmod = await import("node:fs");
+  // 用真文件库：VACUUM INTO 需要一个可写的路径
+  const fileDb = new DatabaseSync(dbPath);
+  fileDb.exec(T.SCHEMA_DDL);
+  T.setDbForTesting(fileDb);
+  T.setDbPathForTesting(dbPath);
+  T.setFsModuleForTesting(fsmod);
+  T.clearMemoryState();
+  T.setResetAtForTesting(0);
+  T.setSuppressedForTesting([]);
+  ingestOne("s1", "D:\\code\\a", 1, 10);
+  T.flushDbForTesting();
+
+  const r = T.clearUsageLedger(quiet, { scope: "all", backup: true });
+  assert.ok(r.ok, "带备份的清空应成功：" + r.error);
+  assert.ok(r.backup && r.backup.ok, "备份应成功：" + JSON.stringify(r.backup));
+  assert.ok(existsSync(r.backup.file), "快照文件必须真的存在");
+  assert.ok(statSync(r.backup.file).size > 0, "快照不能是空文件");
+  // 快照是完整可打开的库，且含清空前的数据
+  const snap = new DatabaseSync(r.backup.file, { readOnly: true });
+  assert.equal(Number(snap.prepare("SELECT COUNT(*) n FROM events").get().n), 1, "快照必须保有清空前的行");
+  snap.close();
+  assert.equal(Number(fileDb.prepare("SELECT COUNT(*) n FROM events").get().n), 0, "原库必须已清空");
+
+  const list = T.listBackups();
+  assert.ok(list.dir && list.dir.includes(T.BACKUP_DIR_NAME), "备份目录名应可识别");
+  assert.ok(list.items.length >= 1, "列表应能读回刚写的快照");
+  const item = list.items[0];
+  assert.equal(item.file, r.backup.file);
+  assert.ok(item.bytes > 0);
+  assert.equal(item.scope, "all", "旁注应记录清空范围");
+  assert.equal(Number(item.cleared), 1, "旁注应记录删了多少行");
+
+  // 轮转：造出超过 BACKUP_KEEP_MAX 份快照，pruneBackups 只保留最近 N 份。
+  // 文件名必须匹配 ^token-meter-\d{8}-\d{6}\.db$，且同一次 VACUUM INTO 不能覆盖已有文件，
+  // 所以这里用互不相同的伪造时间戳（2020-01-<天>）。
+  const dir2 = T.backupDirPath();
+  const pad = (n) => String(n).padStart(2, "0");
+  for (let i = 0; i < T.BACKUP_KEEP_MAX + 3; i++) {
+    const f = join(dir2, "token-meter-202001" + pad(i + 1) + "-000000.db");
+    try { fileDb.prepare("VACUUM INTO ?").run(f); } catch { /* 已存在则跳过 */ }
+  }
+  const before = T.listBackups().items.length;
+  assert.ok(before > T.BACKUP_KEEP_MAX, "应造出多于上限的快照，实际 " + before);
+  const removed = T.pruneBackups(quiet);
+  assert.ok(removed > 0, "超出上限的部分应被删掉");
+  assert.equal(T.listBackups().items.length, T.BACKUP_KEEP_MAX, "轮转后应只剩上限份");
+  fileDb.close();
+  T.setDbForTesting(null);
+  T.setDbPathForTesting(null);
+  T.setFsModuleForTesting(null);
+});
+
+test("清空账本：同一秒内连续两次都必须成功（快照文件名不能撞车）", async () => {
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = mkdtempSync(join(tmpdir(), "oq-backup2-"));
+  const dbPath = join(dir, "token-meter.db");
+  const fsmod = await import("node:fs");
+  const fileDb = new DatabaseSync(dbPath);
+  fileDb.exec(T.SCHEMA_DDL);
+  T.setDbForTesting(fileDb);
+  T.setDbPathForTesting(dbPath);
+  T.setFsModuleForTesting(fsmod);
+  T.clearMemoryState();
+  T.setResetAtForTesting(0);
+  T.setSuppressedForTesting([]);
+  ingestOne("s1", "D:\\code\\a", 40, 10, 1);
+  ingestOne("s1", "D:\\code\\a", 1, 20, 2);
+  T.flushDbForTesting();
+
+  // 连续三次（几乎必然落在同一秒）：文件名只到秒时会撞车，
+  // VACUUM INTO 报 "output file already exists" → 被当成备份失败 → 整次清空被阻断。
+  const r1 = T.clearUsageLedger(quiet, { scope: "before", cut: Date.now() - 30 * 86400000, backup: true });
+  assert.ok(r1.ok, "第一次应成功：" + r1.error);
+  assert.ok(r1.backup && r1.backup.ok, "第一次备份应成功：" + JSON.stringify(r1.backup));
+  const r2 = T.clearUsageLedger(quiet, { scope: "all", backup: true });
+  assert.ok(r2.ok, "同一秒内第二次也必须成功：" + r2.error);
+  assert.ok(r2.backup && r2.backup.ok, "第二次备份应成功：" + JSON.stringify(r2.backup));
+  assert.notEqual(r1.backup.file, r2.backup.file, "两次快照必须是不同文件");
+  assert.ok(fsmod.existsSync(r1.backup.file) && fsmod.existsSync(r2.backup.file), "两份快照都应存在于磁盘");
+  const list = T.listBackups();
+  assert.equal(list.items.length, 2, "列表应能同时列出两份（含 -2 后缀那份）");
+  fileDb.close();
+  T.setDbForTesting(null);
+  T.setDbPathForTesting(null);
+  T.setFsModuleForTesting(null);
+});
+
+// ===== 回填代次闸门：清空账本必须能打断"正在进行中"的回填 =====
+
+/** 造一个 sessionQuery 桩：每读一个会话就推进一次阶段，便于在中途触发清空 */
+function makeScanFixture(sessionCount) {
+  const db = makeLedger();
+  const now = Date.now();
+  const headers = [];
+  for (let s = 0; s < sessionCount; s++) {
+    headers.push({ header: { id: "sess-" + s, cwd: "D:\\code\\p" + s, createdAt: now - 1000, updatedAt: 0 } });
+  }
+  const state = { reads: 0 };
+  // ⚠️ 必须是**稳定对象**：scanHistory 内部会再取一次 ctx.get("sessionQuery")，
+  // 若每次返回新对象，测试在外部替换的 readSession 根本不会生效。
+  const q = {
+    listSessions: async () => headers,
+    readSession: async (id) => {
+      state.reads += 1;
+      return {
+        session: { id },
+        events: [
+          // 时间是"最近"的，确保 cut 拦不住它——能否被拦只取决于代次闸门
+          { seq: 2, time: Date.now() - 1000, type: "assistant/message", data: { turn: 1, step: 0, usage: { inputTokens: 100, outputTokens: 10 } } },
+        ],
+      };
+    },
+  };
+  const ctx = { get: (n) => (n === "sessionQuery" ? q : undefined) };
+  return { db, ctx, q, state };
+}
+
+test("回填代次闸门：扫描途中清空账本，剩余会话不得被写回", async () => {
+  // 关键回归：写入端（flushDb）有代次闸门，读取端此前没有——
+  // 用户在一次回填跑到一半时点「清空账本」，本轮剩余会话仍会带着旧 cut 继续摄入，
+  // 于是刚清空的账本又被历史填满。
+  const { db, ctx, q, state } = makeScanFixture(40);   // 40 个会话 / 4 并发 = 10 个块
+  let cleared = false;
+  // 在第 2 次 readSession 之后（第一块已读完、尚未进入下一块）触发清空
+  const origRead = q.readSession;
+  q.readSession = async (id) => {
+    const r = await origRead(id);
+    if (!cleared && state.reads >= 2) {
+      cleared = true;
+      T.clearUsageLedger(quiet, { scope: "all", backup: false });
+    }
+    return r;
+  };
+  await T.scanHistory(ctx, quiet);
+  const after = Number(db.prepare("SELECT COUNT(*) n FROM events").get().n) || 0;
+  assert.ok(cleared, "测试前提：清空必须在中途发生");
+  // 清空时队列被倒空、代次递增 → 后续块即使摄入也写不进去。
+  // 允许"清空那一刻已入队但尚未 flush"的行被代次闸门丢弃，所以这里断言库是空的。
+  assert.equal(after, 0, "清空后剩余会话不得被写回账本，实际 " + after + " 行");
+  assert.ok(state.reads < 40, "应在清空后停止继续读会话，实际读了 " + state.reads + " 个");
+  db.close();
+  T.setDbForTesting(null);
+});
+
+test("回填代次闸门：文件兜底路径同样能被清空打断", async () => {
+  // fs 兜底是逐文件遍历的长任务，走的是另一个函数，必须同样有闸门。
+  // 这里不真的造会话文件（依赖 DSH_HOME），而是直接验证 genAtStart 参数生效：
+  // 传入一个"已经过期"的代次，扫描应立即返回且不摄入任何事件。
+  const db = makeLedger();
+  const staleGen = T.getLedgerGen();
+  T.clearUsageLedger(quiet, { scope: "all", backup: false });
+  assert.notEqual(T.getLedgerGen(), staleGen, "清空应推进代次");
+  await T.scanFilesystemFallback(quiet, staleGen);
+  assert.equal(Number(db.prepare("SELECT COUNT(*) n FROM events").get().n) || 0, 0, "过期代次的扫描不得写入任何事件");
+  db.close();
+  T.setDbForTesting(null);
+});
+
+// ===== 定向修复 project 列：只 UPDATE，绝不新增行 =====
+
+test("repairProjects：从 sessionQuery 拿到 cwd 后回填 project，行数与总量都不变", async () => {
+  const db = makeLedger();
+  const now = Date.now();
+  // 造两批行：一批 project 已填，一批为空（模拟"只读 session.cwd"时期的脏数据）
+  T.noteProject("s-full", "D:\\code\\alpha");
+  ingestOne("s-full", "D:\\code\\alpha", 1, 100, 1);
+  // 这两条故意不 noteProject，模拟写入时拿不到 cwd
+  ingestOne("s-blank", null, 1, 200, 2);
+  ingestOne("s-blank", null, 1, 300, 3);
+  T.flushDbForTesting();
+  const n0 = db.prepare("SELECT COUNT(*) n FROM events").get().n;
+  const null0 = db.prepare("SELECT COUNT(*) n FROM events WHERE project IS NULL").get().n;
+  assert.equal(n0, 3);
+  assert.equal(null0, 2, "应有 2 行缺项目");
+
+  const ctx = { get: (n) => (n === "sessionQuery" ? {
+    readSession: async (id) => ({ session: { id, cwd: id === "s-blank" ? "D:\\code\\beta" : "D:\\code\\alpha" } }),
+  } : undefined) };
+  const r = await T.repairProjects(ctx, quiet);
+  assert.equal(r.ok, true);
+  assert.equal(r.updated, 2, "只应更新缺项目的那 2 行");
+  assert.equal(r.projectNull, 0);
+  // 关键：绝不能新增行（曾经复用 enrichDimensions 的 fs 扫描，行数从 3186 涨到 6972）
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, n0, "补项目不得改变总行数");
+  const byProj = db.prepare("SELECT project, COUNT(*) n FROM events GROUP BY project ORDER BY project").all();
+  assert.deepEqual(byProj.map((x) => [String(x.project), Number(x.n)]), [["alpha", 1], ["beta", 2]]);
+  db.close();
+  T.setDbForTesting(null);
+});
+
+test("repairProjects：没有 sessionQuery 时退回会话文件头（含目录名反解兜底）", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const home = mkdtempSync(join(tmpdir(), "oq-repair-"));
+  // 布局：<home>/sessions/<cwd 编码>/<sessionId>/session.jsonl
+  const sidA = "sess-aaa";
+  const sidB = "sess-bbb";
+  const dirA = join(home, "sessions", "--D-code-alpha--", sidA);
+  const dirB = join(home, "sessions", "--D-code-beta--", sidB);
+  mkdirSync(dirA, { recursive: true });
+  mkdirSync(dirB, { recursive: true });
+  // A 的文件头里有权威 cwd；B 故意留空头 → 只能靠目录名反解
+  writeFileSync(join(dirA, "session.jsonl"), JSON.stringify({ type: "session", id: sidA, cwd: "D:\\code\\alpha" }) + "\n");
+  writeFileSync(join(dirB, "session.jsonl"), JSON.stringify({ type: "session", id: sidB }) + "\n");
+
+  const prevHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  try {
+    const db = makeLedger();
+    ingestOne(sidA, null, 1, 10, 1);
+    ingestOne(sidB, null, 1, 20, 2);
+    T.flushDbForTesting();
+    const n0 = db.prepare("SELECT COUNT(*) n FROM events").get().n;
+    // ctx.get 一律返回 undefined → 强制走文件路径
+    const r = await T.repairProjects({ get: () => undefined }, quiet);
+    assert.equal(r.ok, true);
+    assert.equal(r.updated, 2, "两个会话都应补上：" + JSON.stringify(r));
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, n0, "文件路径同样不得新增行");
+    const map = new Map(db.prepare("SELECT session_id, project FROM events").all().map((x) => [String(x.session_id), String(x.project)]));
+    assert.equal(map.get(sidA), "alpha", "应优先用文件头的 cwd");
+    assert.equal(map.get(sidB), "beta", "头里没有 cwd 时应退回目录名反解");
+    db.close();
+    T.setDbForTesting(null);
+  } finally {
+    if (prevHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = prevHome;
+  }
+});
+
+test("repairProjects：幂等——第二次跑不写任何行", async () => {
+  const db = makeLedger();
+  ingestOne("s1", null, 1, 10, 1);
+  T.flushDbForTesting();
+  const ctx = { get: (n) => (n === "sessionQuery" ? {
+    readSession: async (id) => ({ session: { id, cwd: "D:\\code\\gamma" } }),
+  } : undefined) };
+  const r1 = await T.repairProjects(ctx, quiet);
+  assert.equal(r1.updated, 1);
+  const r2 = await T.repairProjects(ctx, quiet);
+  assert.equal(r2.updated, 0, "已补过的行不该被再次计入");
+  assert.equal(r2.sessions, 0, "第二次应找不到缺项目的会话");
+  db.close();
+  T.setDbForTesting(null);
+});
+
+test("repairProjects：没有库时如实报错，不假装成功", async () => {
+  T.setDbForTesting(null);
+  const r = await T.repairProjects({ get: () => undefined }, quiet);
+  assert.equal(r.ok, false);
+  assert.equal(r.error, "store-unavailable");
+});
+
+// ===== 补录缺失会话：会新增行、会改变总用量 =====
+
+/** 在临时 DSH_HOME 下造会话文件：{ sid: {cwd, messages:[{in,out,cacheRead,time}]}, ... } */
+async function makeSessionFiles(specs) {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const home = mkdtempSync(join(tmpdir(), "oq-import-"));
+  for (const [sid, spec] of Object.entries(specs)) {
+    const wsName = "--" + String(spec.cwd).replace(/^[A-Za-z]:\\/, "").replace(/\\/g, "-") + "--";
+    const dir = join(home, "sessions", wsName, sid);
+    mkdirSync(dir, { recursive: true });
+    const lines = [JSON.stringify({ type: "session", id: sid, cwd: spec.cwd, createdAt: Date.now() - 86400000 })];
+    for (const m of spec.messages) {
+      lines.push(JSON.stringify({
+        seq: m.seq, time: Date.now() - 3600000, type: "assistant/message",
+        data: { turn: 1, step: 1, usage: { inputTokens: m.in || 0, outputTokens: m.out || 0, cacheReadTokens: m.cacheRead || 0 } },
+      }));
+    }
+    writeFileSync(join(dir, "session.jsonl"), lines.join("\n") + "\n");
+  }
+  return home;
+}
+
+test("importMissing：预览只读、口径与 computeUsage 一致（含 cacheRead），执行后总量与预估完全相等", async () => {
+  const home = await makeSessionFiles({
+    "sess-miss-a": { cwd: "D:\\code\\alpha", messages: [{ seq: 2, in: 100, out: 10, cacheRead: 900 }, { seq: 3, in: 200, out: 20, cacheRead: 1800 }] },
+    "sess-miss-b": { cwd: "D:\\code\\beta", messages: [{ seq: 2, in: 50, out: 5, cacheRead: 0 }] },
+  });
+  const prevHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  try {
+    const db = makeLedger();
+    ingestOne("sess-known", "D:\\code\\alpha", 1, 10);   // 已入库的会话
+    T.flushDbForTesting();
+    const n0 = db.prepare("SELECT COUNT(*) n FROM events").get().n;
+    const t0 = T.computeUsage("all").totals.total;
+
+    const pv = await T.previewMissingSessions(quiet);
+    assert.equal(pv.ok, true);
+    assert.equal(pv.sessions, 2, "应识别出 2 个缺失会话");
+    // 口径：input + cacheRead + output
+    // a: (100+900+10) + (200+1800+20) = 1010 + 2020 = 3030
+    // b: 50+0+5 = 55  合计 3085
+    assert.equal(pv.totalTokens, 3085, "预览口径必须含 cacheRead，实际 " + pv.totalTokens);
+    assert.equal(pv.totalMsgs, 3);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, n0, "预览绝不能写库");
+    assert.equal(T.computeUsage("all").totals.total, t0, "预览绝不能改变总量");
+
+    const r = await T.importMissingSessions(quiet);
+    assert.equal(r.ok, true);
+    assert.equal(r.sessions, 2);
+    assert.equal(r.tokens, 3085);
+    const t1 = T.computeUsage("all").totals.total;
+    // 这是本次最关键的一条：预估必须与实际完全相等（差 0）
+    assert.equal(pv.projectedTotal, t1, "预览的预估总量必须与实际落地值完全一致");
+    assert.equal(t1 - t0, 3085, "总量增量必须等于预览值");
+    assert.ok(db.prepare("SELECT COUNT(*) n FROM events").get().n > n0, "补录应新增行");
+    // 项目归属随补录一起落库
+    const byProj = new Map(db.prepare("SELECT DISTINCT session_id, project FROM events").all().map((x) => [String(x.session_id), String(x.project)]));
+    assert.equal(byProj.get("sess-miss-a"), "alpha");
+    assert.equal(byProj.get("sess-miss-b"), "beta");
+    db.close();
+    T.setDbForTesting(null);
+  } finally {
+    if (prevHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = prevHome;
+  }
+});
+
+test("importMissing：幂等——第二次不新增任何行，也不改总量", async () => {
+  const home = await makeSessionFiles({
+    "sess-x": { cwd: "D:\\code\\x", messages: [{ seq: 2, in: 10, out: 1, cacheRead: 90 }] },
+  });
+  const prevHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  try {
+    const db = makeLedger();
+    const r1 = await T.importMissingSessions(quiet);
+    assert.equal(r1.sessions, 1);
+    const n1 = db.prepare("SELECT COUNT(*) n FROM events").get().n;
+    const t1 = T.computeUsage("all").totals.total;
+    const r2 = await T.importMissingSessions(quiet);
+    assert.equal(r2.sessions, 0, "第二次不该再导入");
+    assert.equal(r2.events, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, n1, "行数不变");
+    assert.equal(T.computeUsage("all").totals.total, t1, "总量不变");
+    db.close();
+    T.setDbForTesting(null);
+  } finally {
+    if (prevHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = prevHome;
+  }
+});
+
+test("importMissing：没有用量事件的空会话不算缺失（只含配置元数据）", async () => {
+  const home = await makeSessionFiles({
+    "sess-empty": { cwd: "D:\\code\\empty", messages: [] },
+  });
+  // 追加一个只有配置类事件的会话文件
+  const { readdirSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const wsRoot = join(home, "sessions");
+  const ws = readdirSync(wsRoot)[0];
+  writeFileSync(join(wsRoot, ws, "sess-empty", "session.jsonl"),
+    [JSON.stringify({ type: "session", id: "sess-empty", cwd: "D:\\code\\empty" }),
+     JSON.stringify({ type: "permission/preset", data: {} }),
+     JSON.stringify({ type: "sandbox/mode", data: {} })].join("\n") + "\n");
+  const prevHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  try {
+    const db = makeLedger();
+    const pv = await T.previewMissingSessions(quiet);
+    assert.equal(pv.sessions, 0, "只有配置事件的空会话不该出现在补录列表里");
+    const r = await T.importMissingSessions(quiet);
+    assert.equal(r.sessions, 0);
+    db.close();
+    T.setDbForTesting(null);
+  } finally {
+    if (prevHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = prevHome;
+  }
+});
+
+test("importMissing：没有库时如实报错", async () => {
+  T.setDbForTesting(null);
+  const pv = await T.previewMissingSessions(quiet);
+  assert.equal(pv.ok, false);
+  assert.equal(pv.error, "store-unavailable");
+  const r = await T.importMissingSessions(quiet);
+  assert.equal(r.ok, false);
+});
+

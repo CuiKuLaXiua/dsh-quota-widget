@@ -26,6 +26,13 @@ DeepSeek Harness (DSH) 标准插件 — **Opencode / DeepSeek / R4Coder 额度 +
 - **常驻悬浮小窗**：可拖拽、位置持久化、迷你态/收起态
 - **多提供商聚合**：Opencode / DeepSeek / R4Coder / TokenMeter
 - **TokenMeter 持久化**：用量账本写入 `$DSH_HOME/storages/token-meter.db`（90 天保留）
+- **账本可按范围清空**：全部 / 按时间（保留最近 N 天）/ 按项目；清空前自动写一份完整库快照到
+  `$DSH_HOME/storages/token-meter-backups/`（保留最近 10 份），见「设置 → 用量与额度 → 数据源与通用 → 清空用量账本」
+- **可补齐历史项目归属**：早期版本漏读 `session.header.cwd` 导致部分旧行项目为「—」，
+  「数据源与通用 → 补齐历史维度」可一次性回填（只更新缺失列，不改动总用量，可重复执行）
+- **可补录缺失会话**：磁盘上存在但账本里没有的会话（清空账本 / 回填遗漏造成），
+  「数据源与通用 → 补录缺失会话」可摄入；**该操作会改变总用量**，因此强制先统计预览
+  （显示新增会话数、tokens、占现有总量比例）再手输确认
 - **面板材质可切**：经典背板（默认，保持原样）/ 液态玻璃 / 亚克力 / 哑光纸，见「设置 → 用量与额度 → 通用 → 面板材质」
 - **纯主题变量**：使用 `var(--dsw-alias-*)`，自动跟随 DSH 明/暗主题
 - **标准 bundle 插件**：`dsh plugin add` 一条命令安装，无需手工改 patch
@@ -83,7 +90,8 @@ github:CuiKuLaXiua/dsh-quota-widget
 
 - **Token 只走请求头**：Host 端代理各提供商额度接口，Token 通过 `Authorization` / `x-api-key` 请求头传递，**不写入 URL query、不写入日志、不写入数据库**；Host 端不持久化 Token，每次请求转发后即丢弃；
 - **TokenMeter 账本**：仅保存在本机 `$DSH_HOME/storages/token-meter.db`（90 天保留），只记录模型名、token 计数、时间等用量元数据，**不记录对话内容**；
-- **本地回环防护**：所有 HTTP 端点仅接受 `127.0.0.1` / `localhost` / `::1` 回环访问，并校验 `Sec-Fetch-Site`，防 DNS rebinding 与跨站读取；
+- **账本快照**：清空账本前自动把完整库快照到 `$DSH_HOME/storages/token-meter-backups/`（保留最近 10 份），内容与账本同源、同样不含对话内容；**需要彻底删除时请手动删掉该目录**；
+- **本地回环防护**：所有 HTTP 端点仅接受 `127.0.0.1` / `localhost` / `::1` 回环访问，并校验 `Sec-Fetch-Site`，防 DNS rebinding 与跨站读取；破坏性端点（清空账本）额外要求一次性 nonce（60s 有效、用后即焚），防本机其它进程重放；
 - **上游主机白名单**：Opencode / DeepSeek 的 baseUrl 仅允许官方域名（`opencode.ai`、`api.opencode.ai`、`api.deepseek.com`）且强制 HTTPS，非白名单配置会自动回退官方端点。
 
 ### 风险提示（请知悉）

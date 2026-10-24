@@ -126,11 +126,49 @@ async function setup({ localStorageSeed = {}, fetchPayload } = {}) {
   const calls = [];
   globalThis.fetch = async (url) => {
     calls.push(String(url));
-    if (String(url).indexOf("/api/token-meter/reset") >= 0) return { ok: true, json: async () => ({ ok: true, cleared: 3 }) };
-    const m = String(url).match(/range=([^&]+)/);
+    const u = String(url);
+    // 清空账本相关端点（顺序重要：reset-preview / reset-token 都含 "/reset" 前缀）
+    if (u.indexOf("/api/token-meter/reset-preview") >= 0) {
+      const scope = (u.match(/scope=([^&]+)/) || [])[1] || "all";
+      return { ok: true, json: async () => ({
+        ok: true, scope: decodeURIComponent(scope), events: 42, target: 42, remaining: 0,
+        days: 3, firstDay: "2026-08-23", lastDay: "2026-10-24", bytes: 1234567,
+        projects: [{ project: "alpha", events: 30 }, { project: "beta", events: 12 }],
+        suppressed: [], resetAt: null,
+      }) };
+    }
+    if (u.indexOf("/api/token-meter/reset-token") >= 0) {
+      return { ok: true, json: async () => ({ ok: true, token: "tok-1", expiresAt: Date.now() + 60000 }) };
+    }
+    if (u.indexOf("/api/token-meter/enrich") >= 0) {
+      return { status: 200, ok: true, json: async () => ({ ok: true, sessions: 3, resolved: 3, updated: 1124, unresolved: 0, projectNull: 0, ms: 42 }) };
+    }
+    if (u.indexOf("/api/token-meter/import-preview") >= 0) {
+      return { status: 200, ok: true, json: async () => ({
+        ok: true, sessions: 27, totalMsgs: 1022, totalTokens: 66750788,
+        currentTotal: 199333429, projectedTotal: 266084217, cutoff: Date.now() - 90 * 86400000,
+        items: [
+          { sessionId: "s1", project: "zenith", msgs: 52, tokens: 3965104, lastTime: Date.now() - 62 * 86400000, events: 900, file: "x" },
+          { sessionId: "s2", project: "alpha", msgs: 20, tokens: 631956, lastTime: Date.now() - 62 * 86400000, events: 400, file: "y" },
+        ],
+      }) };
+    }
+    if (u.indexOf("/api/token-meter/import") >= 0) {
+      return { status: 200, ok: true, json: async () => ({ ok: true, sessions: 27, events: 3553, msgs: 1022, tokens: 66750788, skipped: 8, totalAfter: 266084217, ms: 1236 }) };
+    }
+    if (u.indexOf("/api/token-meter/backups") >= 0) {
+      return { ok: true, json: async () => ({
+        ok: true, dir: "C:\\x\\token-meter-backups",
+        items: [{ file: "C:\\x\\b.db", name: "token-meter-20261024-120000.db", bytes: 99999, at: Date.now(), scope: "all", cleared: 42, resetAt: null, rows: null }],
+      }) };
+    }
+    if (u.indexOf("/api/token-meter/reset") >= 0) {
+      return { status: 200, ok: true, json: async () => ({ ok: true, scope: "all", cleared: 42, remaining: 0, persistent: true, error: null, backup: { ok: true, file: "C:\\x\\b.db", bytes: 99999 }, vacuum: { ok: true, pagesBefore: 200, pagesAfter: 4 } }) };
+    }
+    const m = u.match(/range=([^&]+)/);
     const range = m ? decodeURIComponent(m[1]) : "1d";
     const p = fetchPayload ? fetchPayload(range) : payload(range);
-    return { ok: true, json: async () => p };
+    return { status: 200, ok: true, json: async () => p };
   };
 
   const registered = new Map();
@@ -369,4 +407,382 @@ test("设置页渲染冒烟：拉取失败时显示错误文案而不是崩溃",
   reset();
   const tree = panel();
   assert.ok(collectText(tree).length > 0, "失败态也要渲染出界面");
+});
+
+// ===== 清空用量账本：独立卡片 / 预览 / 输入确认 / 快照 =====
+
+/** 找到文本等于 label 的可点击元素 */
+function findByText(node, label) {
+  const out = [];
+  const walk = (n) => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) { n.forEach(walk); return; }
+    if (n.props) {
+      if (typeof n.props.onClick === "function" && collectText(n.props.children).join("") === label) out.push(n);
+      walk(n.props.children);
+    }
+  };
+  walk(node);
+  return out;
+}
+/** 无分隔符拼接：JSX 里 "将删除 " / "42" / " 行" 是三段子串，带 " | " 会切碎断言目标 */
+function flatText(node) { return collectText(node).join(""); }
+/** 找到 placeholder 或 value 匹配的 input（清空确认框） */
+function findInput(node, pred, out = []) {
+  if (!node || typeof node !== "object") return out;
+  if (Array.isArray(node)) { node.forEach((n) => findInput(n, pred, out)); return out; }
+  if (node.props) {
+    if (node.type === "input" && pred(node.props)) out.push(node);
+    if (node.type === "select" && pred(node.props)) out.push(node);
+    findInput(node.props.children, pred, out);
+  }
+  return out;
+}
+
+test("设置页渲染冒烟：清空用量账本是独立卡片，与「维护」组的重置按钮分开", async () => {
+  const { panel, reset } = await setup({});
+  const tree = await renderTwice(panel, reset);
+  const text = flatText(tree);
+  for (const kw of ["清空用量账本", "不可逆", "输入「清空」确认", "清空前自动写一份快照", "账本快照"]) {
+    assert.ok(text.includes(kw), "清空卡片缺少文案「" + kw + "」");
+  }
+  // 范围三选一必须都在
+  for (const kw of ["全部", "按时间", "按项目"]) {
+    assert.ok(findByText(tree, kw).length >= 1, "范围选项缺少「" + kw + "」");
+  }
+  // 旧实现把「清空用量账本」和「重置配置」放在同一排按钮里，误点风险与后果量级不匹配
+  assert.equal(findByText(tree, "清空用量账本").length, 0, "清空不该再是一个直接可点的危险按钮（要输入确认）");
+  assert.ok(findByText(tree, "重置配置").length >= 1, "「重置配置」应仍在维护组里");
+});
+
+test("设置页渲染冒烟：清空卡片会先统计，并把将被删除的行数显示出来", async () => {
+  const fired = [];
+  globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
+  try {
+    const { panel, reset, calls } = await setup({});
+    const tree = await renderTwice(panel, reset);
+    // 点「统计」触发 preview
+    const btn = findByText(tree, "统计");
+    assert.ok(btn.length >= 1, "应有「统计」按钮");
+    btn[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 10));
+    assert.ok(calls.some((u) => u.includes("/api/token-meter/reset-preview")), "点统计应请求预览端点");
+    reset();
+    const tree2 = panel();
+    const text2 = flatText(tree2);
+    assert.ok(text2.includes("将删除 42 行"), "预览结果应显示具体的删除行数，实际：" + text2.slice(0, 400));
+    assert.ok(text2.includes("剩余 0 行"), "应显示剩余行数");
+    assert.ok(text2.includes("2026-08-23"), "应显示全库日期跨度");
+    // 按时间范围：切到「按时间」后应出现"保留最近 N 天"
+    const byTime = findByText(tree2, "按时间");
+    assert.ok(byTime.length >= 1, "应有「按时间」范围选项");
+    byTime[0].props.onClick();
+    reset();
+    const tree3 = panel();
+    const text3 = flatText(tree3);
+    assert.ok(text3.includes("保留最近"), "按时间范围应允许设置保留天数");
+    assert.ok(findInput(tree3, (p) => p.type === "number" && Number(p.value) > 0).length >= 1, "应有天数输入框");
+    // 按项目范围：应出现项目下拉（候选来自 preview.projects）
+    reset();
+    const byProj = findByText(panel(), "按项目");
+    assert.ok(byProj.length >= 1, "应有「按项目」范围选项");
+    byProj[0].props.onClick();
+    reset();
+    const tree4 = panel();
+    const sels = findInput(tree4, () => true).filter((n) => n.type === "select");
+    assert.ok(sels.length >= 1, "按项目范围应提供项目下拉");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("设置页渲染冒烟：未输入「清空」二字时确认按钮是禁用的", async () => {
+  const { panel, reset } = await setup({});
+  const tree = await renderTwice(panel, reset);
+  const confirm = findByText(tree, "确认清空");
+  assert.ok(confirm.length >= 1, "应有「确认清空」按钮");
+  assert.equal(confirm[0].props.disabled, true, "没输入关键字时必须禁用，防手滑");
+  // 输入框存在且 placeholder 是「清空」
+  const inputs = findInput(tree, (p) => String(p.placeholder || "") === "清空");
+  assert.ok(inputs.length >= 1, "应有确认输入框");
+});
+
+test("设置页渲染冒烟：清空成功后必须带上快照与磁盘回收信息（不能只说清了 0 行）", async () => {
+  const fired = [];
+  globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
+  try {
+    const { panel, reset, calls } = await setup({});
+    await renderTwice(panel, reset);
+    // 走到能点「确认清空」的状态：先点统计，再模拟输入关键字
+    reset();
+    let tree = panel();
+    const stat = findByText(tree, "统计");
+    if (stat.length) { stat[0].props.onClick(); await new Promise((r) => setTimeout(r, 10)); }
+    reset();
+    tree = panel();
+    const inp = findInput(tree, (p) => String(p.placeholder || "") === "清空");
+    assert.ok(inp.length >= 1);
+    inp[0].props.onChange({ target: { value: "清空" } });
+    reset();
+    tree = panel();
+    const confirm = findByText(tree, "确认清空");
+    assert.ok(confirm.length >= 1);
+    assert.equal(confirm[0].props.disabled, false, "输入关键字后应解锁");
+    confirm[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 20));
+    // 应该先取令牌，再带着令牌调 reset
+    assert.ok(calls.some((u) => u.includes("/reset-token")), "破坏性操作前应先取一次性令牌");
+    assert.ok(calls.some((u) => u.includes("/api/token-meter/reset?")), "应调用 reset 端点");
+    reset();
+    const after = collectText(panel()).join(" | ");
+    assert.ok(after.includes("已清空 42 行"), "成功提示应带真实行数，实际：" + after.slice(0, 300));
+    assert.ok(after.includes("已备份"), "成功提示应说明已备份（不可逆操作的退路）");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("设置页渲染冒烟：host 报错时必须显示失败，不能弹「已清空」", async () => {
+  const fired = [];
+  globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
+  const prevFetch = globalThis.fetch;
+  try {
+    const { panel, reset } = await setup({});
+    // 覆盖 fetch：reset 端点返回 500（模拟库不可用）
+    const base = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("/api/token-meter/reset?") && !String(url).includes("preview")) {
+        return { status: 500, ok: false, json: async () => ({ ok: false, error: "store-unavailable" }) };
+      }
+      return base(url);
+    };
+    await renderTwice(panel, reset);
+    reset();
+    let tree = panel();
+    const stat = findByText(tree, "统计");
+    if (stat.length) { stat[0].props.onClick(); await new Promise((r) => setTimeout(r, 10)); }
+    reset();
+    tree = panel();
+    findInput(tree, (p) => String(p.placeholder || "") === "清空")[0].props.onChange({ target: { value: "清空" } });
+    reset();
+    tree = panel();
+    findByText(tree, "确认清空")[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 20));
+    reset();
+    const after = collectText(panel()).join(" | ");
+    assert.ok(!after.includes("已清空 42 行"), "失败时绝不能显示成功");
+    assert.ok(after.includes("store-unavailable") || after.includes("清空失败"), "应显示失败原因，实际：" + after.slice(0, 300));
+  } finally {
+    globalThis.fetch = prevFetch;
+    delete globalThis.window;
+  }
+});
+
+test("设置页渲染冒烟：快照列表能读回并展示文件名/大小/删除行数", async () => {
+  const fired = [];
+  globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
+  try {
+    const { panel, reset, calls } = await setup({});
+    let tree = await renderTwice(panel, reset);
+    const btn = findByText(tree, "读取").concat(findByText(tree, "刷新列表"));
+    assert.ok(btn.length >= 1, "应有读取快照列表的按钮");
+    btn[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 10));
+    assert.ok(calls.some((u) => u.includes("/api/token-meter/backups")), "应请求快照列表端点");
+    reset();
+    tree = panel();
+    const text = collectText(tree).join(" | ");
+    assert.ok(text.includes("token-meter-20261024-120000.db"), "应列出快照文件名，实际：" + text.slice(0, 300));
+    assert.ok(text.includes("删 42 行"), "应显示该快照对应删除的行数");
+    assert.ok(text.includes("token-meter-backups"), "应显示快照目录");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("设置页渲染冒烟：补齐历史维度卡片存在，点击后走令牌 + enrich 并显示补齐行数", async () => {
+  const fired = [];
+  globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
+  try {
+    const { panel, reset, calls } = await setup({});
+    let tree = await renderTwice(panel, reset);
+    // 卡片在「数据源与通用」标签页下，必须先切过去（默认停在「用量统计」）
+    const tab = findByText(tree, "数据源与通用");
+    assert.ok(tab.length >= 1, "应有「数据源与通用」标签");
+    tab[0].props.onClick();
+    reset();
+    tree = panel();
+    const text0 = flatText(tree);
+    assert.ok(text0.includes("补齐历史维度"), "应有「补齐历史维度」卡片");
+    assert.ok(text0.includes("项目 / 工具 / 耗时归因"), "卡片标题应说明补的是什么");
+    assert.ok(text0.includes("只更新缺失的列"), "应说明可安全重跑");
+
+    const btn = findByText(tree, "补齐历史维度");
+    // 注意：卡片标题与按钮同名，findByText 只收带 onClick 的元素，因此这里拿到的是按钮
+    assert.ok(btn.length >= 1, "应有触发按钮");
+    btn[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 30));
+    // 和清空一样：先取一次性令牌，再带令牌调用
+    assert.ok(calls.some((u) => u.includes("/reset-token")), "应先取一次性令牌");
+    assert.ok(calls.some((u) => u.includes("/api/token-meter/enrich")), "应调用 enrich 端点");
+    reset();
+    const after = flatText(panel());
+    // 注意 fmtNum 会把 1124 缩写成 "1.1K"，断言用缩写形式
+    assert.ok(after.includes("已补齐 1.1K 行"), "应显示实际补齐行数，实际：" + after.slice(-600));
+    assert.ok(after.includes("涉及 3 个会话"), "应显示涉及多少会话");
+    assert.ok(after.includes("仍缺项目 0 行"), "应显示还剩多少行无法补齐");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("设置页渲染冒烟：补齐失败时必须显示错误，不能弹成功", async () => {
+  const fired = [];
+  globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
+  const prevFetch = globalThis.fetch;
+  try {
+    const { panel, reset } = await setup({});
+    const base = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("/api/token-meter/enrich")) {
+        return { status: 500, ok: false, json: async () => ({ ok: false, error: "store-unavailable" }) };
+      }
+      return base(url);
+    };
+    const tree = await renderTwice(panel, reset);
+    const btn = findByText(tree, "补齐历史维度");
+    assert.ok(btn.length >= 1);
+    btn[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 20));
+    reset();
+    const after = flatText(panel());
+    assert.ok(!after.includes("已补齐 1.1K 行"), "失败时绝不能显示成功");
+    assert.ok(after.includes("store-unavailable") || after.includes("补齐失败"), "应显示失败原因，实际：" + after.slice(0, 300));
+  } finally {
+    globalThis.fetch = prevFetch;
+    delete globalThis.window;
+  }
+});
+
+// ===== 补录缺失会话：会新增行、会改变总量 =====
+
+/** 切到「数据源与通用」标签页并返回树 */
+async function gotoConf(panel, reset) {
+  let tree = await renderTwice(panel, reset);
+  const tab = findByText(tree, "数据源与通用");
+  assert.ok(tab.length >= 1, "应有「数据源与通用」标签");
+  tab[0].props.onClick();
+  reset();
+  return panel();
+}
+
+test("设置页渲染冒烟：补录缺失会话卡片存在，且与「补齐历史维度」讲清区别", async () => {
+  globalThis.window = { dispatchEvent: () => {}, addEventListener() {}, removeEventListener() {} };
+  try {
+    const { panel, reset } = await setup({});
+    const tree = await gotoConf(panel, reset);
+    const text = flatText(tree);
+    assert.ok(text.includes("补录缺失会话"), "应有「补录缺失会话」卡片");
+    assert.ok(text.includes("从会话文件补录"), "卡片标题");
+    assert.ok(text.includes("会改变总量"), "必须标明会改变总量（与补齐历史维度区分）");
+    // 关键：必须明确讲清两者区别——这是用户最容易混淆的地方
+    assert.ok(text.includes("只补已有行的列、不动总量"), "应说明补齐历史维度不动总量");
+    assert.ok(text.includes("会新增记录、让总量变大"), "应说明补录会新增记录");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("设置页渲染冒烟：补录前必须先统计，预览显示新增会话/tokens/占比与前后总量", async () => {
+  globalThis.window = { dispatchEvent: () => {}, addEventListener() {}, removeEventListener() {} };
+  try {
+    const { panel, reset, calls } = await setup({});
+    let tree = await gotoConf(panel, reset);
+    const btn = findByText(tree, "统计待补录");
+    assert.ok(btn.length >= 1, "应有「统计待补录」按钮");
+    btn[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 15));
+    assert.ok(calls.some((u) => u.includes("/api/token-meter/import-preview")), "应请求预览端点");
+    reset();
+    tree = panel();
+    const t = flatText(tree);
+    assert.ok(t.includes("将新增 27 个会话"), "应显示新增会话数，实际：" + t.slice(-700));
+    // fmtNum(1022) → "1.0K"，不要按原始数字断言
+    assert.ok(t.includes("1.0K 条回复"), "应显示新增回复条数，实际：" + t.slice(-700));
+    assert.ok(t.includes("+66.75M tokens"), "应显示新增 tokens（含 cacheRead 口径），实际：" + t.slice(-700));
+    assert.ok(t.includes("占总量的 33.5%"), "应显示占总量比例，实际：" + t.slice(-700));
+    assert.ok(t.includes("199.33M → 266.08M"), "应显示补录前后的总量对照，实际：" + t.slice(-700));
+    // 预览阶段不得显示"已补录"
+    assert.ok(!t.includes("已补录"), "未执行前不得显示已补录");
+    // 明细可展开
+    const detail = findByText(tree, "查看明细（27 个会话）");
+    assert.ok(detail.length >= 1, "应提供明细展开");
+    detail[0].props.onClick();
+    reset();
+    const t2 = flatText(panel());
+    assert.ok(t2.includes("zenith") && t2.includes("alpha"), "明细应列出各会话的项目");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("设置页渲染冒烟：补录需手输「补录」才解锁，执行后显示结果", async () => {
+  globalThis.window = { dispatchEvent: () => {}, addEventListener() {}, removeEventListener() {} };
+  try {
+    const { panel, reset, calls } = await setup({});
+    let tree = await gotoConf(panel, reset);
+    findByText(tree, "统计待补录")[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 15));
+    reset();
+    tree = panel();
+
+    const confirm = findByText(tree, "确认补录");
+    assert.ok(confirm.length >= 1, "应有「确认补录」按钮");
+    assert.equal(confirm[0].props.disabled, true, "没输入关键字时必须禁用");
+
+    const inp = findInput(tree, (p) => String(p.placeholder || "") === "补录");
+    assert.ok(inp.length >= 1, "应有确认输入框");
+    inp[0].props.onChange({ target: { value: "补录" } });
+    reset();
+    tree = panel();
+    const confirm2 = findByText(tree, "确认补录");
+    assert.equal(confirm2[0].props.disabled, false, "输入后应解锁");
+    confirm2[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 25));
+    assert.ok(calls.some((u) => u.includes("/reset-token")), "应先取一次性令牌");
+    assert.ok(calls.some((u) => u.includes("/api/token-meter/import")), "应调用 import 端点");
+    reset();
+    const after = flatText(panel());
+    assert.ok(after.includes("已补录 27 个会话"), "应显示补录结果，实际：" + after.slice(-600));
+    assert.ok(after.includes("新增 3.6K 行事件") || after.includes("3.6K"), "应显示新增行数");
+    assert.ok(after.includes("现总量"), "应显示补录后的总量");
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test("设置页渲染冒烟：无需补录时明确提示，不给确认入口", async () => {
+  globalThis.window = { dispatchEvent: () => {}, addEventListener() {}, removeEventListener() {} };
+  const prevFetch = globalThis.fetch;
+  try {
+    const { panel, reset } = await setup({});
+    const base = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes("/api/token-meter/import-preview")) {
+        return { status: 200, ok: true, json: async () => ({ ok: true, sessions: 0, totalMsgs: 0, totalTokens: 0, currentTotal: 100, projectedTotal: 100, items: [] }) };
+      }
+      return base(url);
+    };
+    let tree = await gotoConf(panel, reset);
+    findByText(tree, "统计待补录")[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 15));
+    reset();
+    tree = panel();
+    const t = flatText(tree);
+    assert.ok(t.includes("都已入库，无需补录"), "应明确提示无需补录");
+    assert.equal(findByText(tree, "确认补录").length, 0, "没有可补内容时不该出现确认按钮");
+  } finally {
+    globalThis.fetch = prevFetch;
+    delete globalThis.window;
+  }
 });
