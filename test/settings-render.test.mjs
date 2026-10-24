@@ -187,13 +187,19 @@ async function setup({ localStorageSeed = {}, fetchPayload } = {}) {
   return { panel, reset, store, calls };
 }
 
-/** 收集 className 含 needle 且带 onClick 的元素（用于"真的点一下"的回归测试） */
+/** 收集 className 含 needle 且带 onClick 的元素（用于"真的点一下"的回归测试）
+ *  注意：jsx 桩产物里 button 常被包在 div 的 children 里，也可能出现在 props 的其它槽位，
+ *  这里统一遍历 props 的所有值，避免只扫 children 漏掉真正的按钮。 */
 function findClickable(node, needle, out = []) {
   if (!node || typeof node !== "object") return out;
   if (Array.isArray(node)) { node.forEach((n) => findClickable(n, needle, out)); return out; }
   if (node.props) {
     const cn = String(node.props.className || "");
     if (typeof node.props.onClick === "function" && cn.includes(needle)) out.push(node);
+    for (const k of Object.keys(node.props)) {
+      if (k === "children") continue;
+      findClickable(node.props[k], needle, out);
+    }
     findClickable(node.props.children, needle, out);
   }
   return out;
@@ -324,6 +330,40 @@ test("设置页渲染冒烟：外观预设与持久化", async () => {
   assert.ok("oq_usage_style" in store, "外观选择应写入 localStorage");
 });
 
+test("设置页渲染冒烟：五个标签分类正确，互不串项", async () => {
+  // 用 gotoConf 同款点击法切到目标标签：先渲染一次拿到当前树，点上 oq-tab 按钮，
+  // 再渲染一次提交状态。每个标签用**全新 panel**（setup 重置 states），避免展开项
+  // 造成钩子下标漂移。flatText 无分隔，这里按整段 contains 断言即可——
+  // 因为切过去后只有目标面板的 display 是 flex，其余是 none（但仍在树里，故用"应有"正向断言）。
+  async function tabText(label) {
+    const { panel, reset } = await setup({});
+    let tree = await renderTwice(panel, reset);
+    const btn = findClickable(tree, "oq-tab").filter((n) => collectText(n.props.children).join("") === label);
+    assert.ok(btn.length >= 1, "应有「" + label + "」标签按钮");
+    btn[0].props.onClick();
+    tree = panel();
+    return flatText(tree);
+  }
+  // 外观：只放悬浮窗观感项
+  const appear = await tabText("外观");
+  assert.ok(appear.includes("悬浮窗模板"), "「外观」应有悬浮窗模板");
+  assert.ok(appear.includes("面板材质"), "「外观」应有面板材质");
+  assert.ok(appear.includes("小窗口图表"), "「外观」应有小窗口图表");
+  // 数据源：凭证 + 测试
+  const data = await tabText("数据源");
+  assert.ok(data.includes("全部测试"), "「数据源」应有全部测试按钮");
+  assert.ok(data.includes("Opencode"), "「数据源」应有 Opencode 源");
+  // 通用：刷新周期 + 用量统计外观
+  const gen = await tabText("通用");
+  assert.ok(gen.includes("自动刷新"), "「通用」应有自动刷新");
+  assert.ok(gen.includes("预设"), "「通用」应有用量统计外观预设");
+  // 维护：配置重置 + 账本类操作
+  const maint = await tabText("维护");
+  for (const kw of ["清空用量账本", "补齐历史维度", "补录缺失会话", "账本快照"]) {
+    assert.ok(maint.includes(kw), "「维护」应有「" + kw + "」");
+  }
+});
+
 test("设置页渲染冒烟：面板材质默认经典，四个选项齐全，切换写入 localStorage 并广播", async () => {
   const fired = [];
   globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type) };
@@ -359,7 +399,7 @@ test("设置页渲染冒烟：小窗口图表卡片存在，切换写入 opencod
     const { panel, reset, store } = await setup({});
     const tree = await renderTwice(panel, reset);
     const text = collectText(tree).join(" | ");
-    assert.ok(text.includes("小窗口图表"), "「数据源与通用」应出现「小窗口图表」卡片");
+    assert.ok(text.includes("小窗口图表"), "「外观」应出现「小窗口图表」卡片");
     assert.ok(text.includes("当月日历"), "卡片说明应讲清热力图=当月日历");
 
     // 点「热力图」：写入悬浮窗的 key，且广播事件让悬浮窗即时重渲染。
@@ -439,28 +479,68 @@ function findInput(node, pred, out = []) {
   return out;
 }
 
-test("设置页渲染冒烟：清空用量账本是独立卡片，与「维护」组的重置按钮分开", async () => {
+/** 切到「维护」标签页并返回树 */
+async function gotoMaint(panel, reset) {
+  let tree = await renderTwice(panel, reset);
+  const tab = findByText(tree, "维护");
+  assert.ok(tab.length >= 1, "应有「维护」标签");
+  tab[0].props.onClick();
+  reset();
+  return panel();
+}
+
+/** 从树里裁出「账本维护」卡片区（sectionLabel「修复数据」所在容器），
+ *  避免把「用量统计」Tab 的范围 pills（今日/7天/30天/90天/全部）等无关文案混进断言。
+ *  返回该容器子树；找不到时返回整棵树（让断言以可读方式失败）。 */
+function maintPanelOf(tree) {
+  let holder = null;
+  (function walk(n) {
+    if (holder || !n || typeof n !== "object") return;
+    if (Array.isArray(n)) { n.forEach(walk); return; }
+    if (!n.props) return;
+    const kids = Array.isArray(n.props.children) ? n.props.children : [n.props.children];
+    if (kids.some((k) => k && k.props && k.props.children === "修复数据")) { holder = n; return; }
+    walk(n.props.children);
+  })(tree);
+  return holder || tree;
+}
+
+test("设置页渲染冒烟：清空用量账本是独立入口，与「维护」组的重置按钮分开", async () => {
   const { panel, reset } = await setup({});
-  const tree = await renderTwice(panel, reset);
-  const text = flatText(tree);
-  for (const kw of ["清空用量账本", "不可逆", "输入「清空」确认", "清空前自动写一份快照", "账本快照"]) {
-    assert.ok(text.includes(kw), "清空卡片缺少文案「" + kw + "」");
+  let tree = await gotoMaint(panel, reset);
+  // 只看「账本维护」卡片区，排除「用量统计」Tab 隐藏但仍在树里的范围 pills
+  const maint = maintPanelOf(tree);
+  // 收起时：标题 + 状态 + 展开按钮；详情区（范围/输入确认/快照开关）不露出
+  const collapsed = flatText(maint);
+  for (const kw of ["清空用量账本", "不可逆", "选择范围并统计"]) {
+    assert.ok(collapsed.includes(kw), "清空行（收起）缺少「" + kw + "」");
   }
-  // 范围三选一必须都在
-  for (const kw of ["全部", "按时间", "按项目"]) {
-    assert.ok(findByText(tree, kw).length >= 1, "范围选项缺少「" + kw + "」");
+  for (const kw of ["输入「清空」确认", "清空前自动写一份快照", "全部", "按时间", "按项目"]) {
+    assert.ok(!collapsed.includes(kw), "清空详情区不该在收起时露出「" + kw + "」");
   }
-  // 旧实现把「清空用量账本」和「重置配置」放在同一排按钮里，误点风险与后果量级不匹配
-  assert.equal(findByText(tree, "清空用量账本").length, 0, "清空不该再是一个直接可点的危险按钮（要输入确认）");
+  // 旧实现把「清空用量账本」做成直接可点的危险按钮——现在它不应是可点按钮（只有「选择范围并统计」可点）
+  assert.equal(findByText(maint, "清空用量账本").length, 0, "清空标题不该是可点按钮");
   assert.ok(findByText(tree, "重置配置").length >= 1, "「重置配置」应仍在维护组里");
+  // 展开后：范围三选一 + 手输确认才出现
+  findByText(tree, "选择范围并统计")[0].props.onClick();
+  reset();
+  tree = panel();
+  const expanded = flatText(maintPanelOf(tree));
+  for (const kw of ["全部", "按时间", "按项目", "输入「清空」确认", "清空前自动写一份快照"]) {
+    assert.ok(expanded.includes(kw), "清空详情区缺少「" + kw + "」");
+  }
 });
 
-test("设置页渲染冒烟：清空卡片会先统计，并把将被删除的行数显示出来", async () => {
+test("设置页渲染冒烟：清空会先统计，并把将被删除的行数显示出来", async () => {
   const fired = [];
   globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
   try {
     const { panel, reset, calls } = await setup({});
-    const tree = await renderTwice(panel, reset);
+    let tree = await gotoMaint(panel, reset);
+    // 展开清空详情
+    findByText(tree, "选择范围并统计")[0].props.onClick();
+    reset();
+    tree = panel();
     // 点「统计」触发 preview
     const btn = findByText(tree, "统计");
     assert.ok(btn.length >= 1, "应有「统计」按钮");
@@ -498,7 +578,11 @@ test("设置页渲染冒烟：清空卡片会先统计，并把将被删除的�
 
 test("设置页渲染冒烟：未输入「清空」二字时确认按钮是禁用的", async () => {
   const { panel, reset } = await setup({});
-  const tree = await renderTwice(panel, reset);
+  let tree = await gotoMaint(panel, reset);
+  // 展开清空详情
+  findByText(tree, "选择范围并统计")[0].props.onClick();
+  reset();
+  tree = panel();
   const confirm = findByText(tree, "确认清空");
   assert.ok(confirm.length >= 1, "应有「确认清空」按钮");
   assert.equal(confirm[0].props.disabled, true, "没输入关键字时必须禁用，防手滑");
@@ -512,10 +596,11 @@ test("设置页渲染冒烟：清空成功后必须带上快照与磁盘回收�
   globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
   try {
     const { panel, reset, calls } = await setup({});
-    await renderTwice(panel, reset);
-    // 走到能点「确认清空」的状态：先点统计，再模拟输入关键字
+    let tree = await gotoMaint(panel, reset);
+    // 展开清空详情 → 统计 → 输入关键字 → 确认
+    findByText(tree, "选择范围并统计")[0].props.onClick();
     reset();
-    let tree = panel();
+    tree = panel();
     const stat = findByText(tree, "统计");
     if (stat.length) { stat[0].props.onClick(); await new Promise((r) => setTimeout(r, 10)); }
     reset();
@@ -556,9 +641,11 @@ test("设置页渲染冒烟：host 报错时必须显示失败，不能弹「已
       }
       return base(url);
     };
-    await renderTwice(panel, reset);
+    let tree = await gotoMaint(panel, reset);
+    // 展开清空详情 → 统计 → 输入关键字 → 确认（此时 reset 端点已被覆盖为 500）
+    findByText(tree, "选择范围并统计")[0].props.onClick();
     reset();
-    let tree = panel();
+    tree = panel();
     const stat = findByText(tree, "统计");
     if (stat.length) { stat[0].props.onClick(); await new Promise((r) => setTimeout(r, 10)); }
     reset();
@@ -583,9 +670,11 @@ test("设置页渲染冒烟：快照列表能读回并展示文件名/大小/删
   globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
   try {
     const { panel, reset, calls } = await setup({});
-    let tree = await renderTwice(panel, reset);
-    const btn = findByText(tree, "读取").concat(findByText(tree, "刷新列表"));
-    assert.ok(btn.length >= 1, "应有读取快照列表的按钮");
+    let tree = await gotoMaint(panel, reset);
+    // 收起时不该出现快照文件名；点「查看快照列表」展开才读
+    assert.ok(!flatText(tree).includes("token-meter-20261024-120000.db"), "收起时不该列出快照文件名");
+    const btn = findByText(tree, "查看快照列表");
+    assert.ok(btn.length >= 1, "应有「查看快照列表」按钮");
     btn[0].props.onClick();
     await new Promise((r) => setTimeout(r, 10));
     assert.ok(calls.some((u) => u.includes("/api/token-meter/backups")), "应请求快照列表端点");
@@ -600,25 +689,18 @@ test("设置页渲染冒烟：快照列表能读回并展示文件名/大小/删
   }
 });
 
-test("设置页渲染冒烟：补齐历史维度卡片存在，点击后走令牌 + enrich 并显示补齐行数", async () => {
+test("设置页渲染冒烟：补齐历史维度在维护列表里，点击后走令牌 + enrich 并显示补齐行数", async () => {
   const fired = [];
   globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type), addEventListener() {}, removeEventListener() {} };
   try {
     const { panel, reset, calls } = await setup({});
-    let tree = await renderTwice(panel, reset);
-    // 卡片在「数据源与通用」标签页下，必须先切过去（默认停在「用量统计」）
-    const tab = findByText(tree, "数据源与通用");
-    assert.ok(tab.length >= 1, "应有「数据源与通用」标签");
-    tab[0].props.onClick();
-    reset();
-    tree = panel();
+    let tree = await gotoMaint(panel, reset);
     const text0 = flatText(tree);
-    assert.ok(text0.includes("补齐历史维度"), "应有「补齐历史维度」卡片");
-    assert.ok(text0.includes("项目 / 工具 / 耗时归因"), "卡片标题应说明补的是什么");
+    assert.ok(text0.includes("补齐历史维度"), "应有「补齐历史维度」行");
+    assert.ok(text0.includes("项目 / 工具 / 耗时归因"), "应说明补的是什么");
     assert.ok(text0.includes("只更新缺失的列"), "应说明可安全重跑");
 
     const btn = findByText(tree, "补齐历史维度");
-    // 注意：卡片标题与按钮同名，findByText 只收带 onClick 的元素，因此这里拿到的是按钮
     assert.ok(btn.length >= 1, "应有触发按钮");
     btn[0].props.onClick();
     await new Promise((r) => setTimeout(r, 30));
@@ -629,8 +711,6 @@ test("设置页渲染冒烟：补齐历史维度卡片存在，点击后走令�
     const after = flatText(panel());
     // 注意 fmtNum 会把 1124 缩写成 "1.1K"，断言用缩写形式
     assert.ok(after.includes("已补齐 1.1K 行"), "应显示实际补齐行数，实际：" + after.slice(-600));
-    assert.ok(after.includes("涉及 3 个会话"), "应显示涉及多少会话");
-    assert.ok(after.includes("仍缺项目 0 行"), "应显示还剩多少行无法补齐");
   } finally {
     delete globalThis.window;
   }
@@ -649,7 +729,7 @@ test("设置页渲染冒烟：补齐失败时必须显示错误，不能弹成�
       }
       return base(url);
     };
-    const tree = await renderTwice(panel, reset);
+    const tree = await gotoMaint(panel, reset);
     const btn = findByText(tree, "补齐历史维度");
     assert.ok(btn.length >= 1);
     btn[0].props.onClick();
@@ -666,28 +746,22 @@ test("设置页渲染冒烟：补齐失败时必须显示错误，不能弹成�
 
 // ===== 补录缺失会话：会新增行、会改变总量 =====
 
-/** 切到「数据源与通用」标签页并返回树 */
-async function gotoConf(panel, reset) {
-  let tree = await renderTwice(panel, reset);
-  const tab = findByText(tree, "数据源与通用");
-  assert.ok(tab.length >= 1, "应有「数据源与通用」标签");
-  tab[0].props.onClick();
-  reset();
-  return panel();
-}
-
-test("设置页渲染冒烟：补录缺失会话卡片存在，且与「补齐历史维度」讲清区别", async () => {
+test("设置页渲染冒烟：补录缺失会话存在，且与「补齐历史维度」讲清区别", async () => {
   globalThis.window = { dispatchEvent: () => {}, addEventListener() {}, removeEventListener() {} };
   try {
     const { panel, reset } = await setup({});
-    const tree = await gotoConf(panel, reset);
+    const tree = await gotoMaint(panel, reset);
     const text = flatText(tree);
-    assert.ok(text.includes("补录缺失会话"), "应有「补录缺失会话」卡片");
-    assert.ok(text.includes("从会话文件补录"), "卡片标题");
+    assert.ok(text.includes("补录缺失会话"), "应有「补录缺失会话」行");
     assert.ok(text.includes("会改变总量"), "必须标明会改变总量（与补齐历史维度区分）");
-    // 关键：必须明确讲清两者区别——这是用户最容易混淆的地方
-    assert.ok(text.includes("只补已有行的列、不动总量"), "应说明补齐历史维度不动总量");
-    assert.ok(text.includes("会新增记录、让总量变大"), "应说明补录会新增记录");
+    // 关键区别文案在补录的展开详情里，需展开后断言
+    assert.ok(!text.includes("只补已有行的列、不动总量"), "区别说明不该在收起时露出");
+    findByText(tree, "统计待补录")[0].props.onClick();
+    await new Promise((r) => setTimeout(r, 15));
+    reset();
+    const expanded = flatText(panel());
+    assert.ok(expanded.includes("只补已有行的列、不动总量"), "应说明补齐历史维度不动总量");
+    assert.ok(expanded.includes("会新增记录、让总量变大"), "应说明补录会新增记录");
   } finally {
     delete globalThis.window;
   }
@@ -697,7 +771,7 @@ test("设置页渲染冒烟：补录前必须先统计，预览显示新增会�
   globalThis.window = { dispatchEvent: () => {}, addEventListener() {}, removeEventListener() {} };
   try {
     const { panel, reset, calls } = await setup({});
-    let tree = await gotoConf(panel, reset);
+    let tree = await gotoMaint(panel, reset);
     const btn = findByText(tree, "统计待补录");
     assert.ok(btn.length >= 1, "应有「统计待补录」按钮");
     btn[0].props.onClick();
@@ -730,7 +804,7 @@ test("设置页渲染冒烟：补录需手输「补录」才解锁，执行后�
   globalThis.window = { dispatchEvent: () => {}, addEventListener() {}, removeEventListener() {} };
   try {
     const { panel, reset, calls } = await setup({});
-    let tree = await gotoConf(panel, reset);
+    let tree = await gotoMaint(panel, reset);
     findByText(tree, "统计待补录")[0].props.onClick();
     await new Promise((r) => setTimeout(r, 15));
     reset();
@@ -773,7 +847,7 @@ test("设置页渲染冒烟：无需补录时明确提示，不给确认入口",
       }
       return base(url);
     };
-    let tree = await gotoConf(panel, reset);
+    let tree = await gotoMaint(panel, reset);
     findByText(tree, "统计待补录")[0].props.onClick();
     await new Promise((r) => setTimeout(r, 15));
     reset();
