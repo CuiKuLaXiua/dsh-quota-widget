@@ -61,8 +61,8 @@ dsh plugin --profile web add github:CuiKuLaXiua/dsh-quota-widget
 github:CuiKuLaXiua/dsh-quota-widget
 ```
 
-> git 源默认取仓库默认分支（`main`）的最新提交；要固定版本，先给仓库打 tag 再写
-> `github:CuiKuLaXiua/dsh-quota-widget#v0.1.0`。本包无 `prepare`/`build` 脚本，
+> git 源默认取仓库默认分支（`main`）的最新提交；要固定版本，用 `#` 接 tag 名，例如
+> `github:CuiKuLaXiua/dsh-quota-widget#v0.1.1`。本包无 `prepare`/`build` 脚本，
 > 安装时 pnpm 不需要放行构建（无 `allowBuilds` 配置步骤）。
 
 具体步骤：

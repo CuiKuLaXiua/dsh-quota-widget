@@ -16,7 +16,7 @@ REM ============================================================
 
 set "PLUGIN_DIR=%~dp0"
 set "PLUGIN_NAME=dsh-quota-widget"
-set "PLUGIN_VERSION=0.1.0"
+set "PLUGIN_VERSION=0.1.1"
 
 if defined DSH_DESKTOP_DIR (
   set "DSH_CLI=%DSH_DESKTOP_DIR%\resources\runtime\cli\bin\dsh.cmd"

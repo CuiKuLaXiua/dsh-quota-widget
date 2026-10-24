@@ -7,7 +7,7 @@ reconcile `dsh.profile.bundles`），registry 名 / `github:` / `git+https:` / t
 
 | 形态 | 用户安装命令 | 版本由谁决定 |
 |---|---|---|
-| GitHub 源 | `dsh plugin --profile web add github:CuiKuLaXiua/dsh-quota-widget` | 默认分支 HEAD；可用 `#v0.1.0` 固定到 tag |
+| GitHub 源 | `dsh plugin --profile web add github:CuiKuLaXiua/dsh-quota-widget` | 默认分支 HEAD；可用 `#v0.1.1` 固定到 tag |
 | npm 源 | `dsh plugin --profile web add dsh-quota-widget` | `package.json` 的 `version`（需先 `npm publish`） |
 
 本包**无 `prepare`/`build`/`postinstall` 脚本**、无 dependencies/devDependencies，`lib/*.js` 就是产物，
