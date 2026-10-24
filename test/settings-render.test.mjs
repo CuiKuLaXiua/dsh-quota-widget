@@ -286,6 +286,34 @@ test("设置页渲染冒烟：外观预设与持久化", async () => {
   assert.ok("oq_usage_style" in store, "外观选择应写入 localStorage");
 });
 
+test("设置页渲染冒烟：面板材质默认经典，四个选项齐全，切换写入 localStorage 并广播", async () => {
+  const fired = [];
+  globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type) };
+  try {
+    const { panel, reset, store } = await setup({});
+    const tree = await renderTwice(panel, reset);
+    const text = collectText(tree).join(" | ");
+    assert.ok(text.includes("面板材质"), "设置页应出现「面板材质」卡片");
+    for (const kw of ["经典", "液态玻璃", "亚克力", "哑光纸"]) {
+      assert.ok(text.includes(kw), "材质选项缺少「" + kw + "」");
+    }
+    // 未选择过时不应写入 localStorage（默认值只在读取时兜底）
+    assert.ok(!("oq_panel_material" in store), "默认材质不应主动写盘");
+
+    // 逐个点过去：每一项都要能落盘并广播
+    for (const [label, key] of [["液态玻璃", "liquid"], ["亚克力", "acrylic"], ["哑光纸", "paper"], ["经典", "classic"]]) {
+      fired.length = 0;
+      const btn = findClickable(tree, "").filter((n) => collectText(n.props.children).join("") === label);
+      assert.ok(btn.length >= 1, "应能找到「" + label + "」按钮");
+      btn[0].props.onClick();
+      assert.equal(store.oq_panel_material, key, "「" + label + "」应写入 " + key);
+      assert.ok(fired.includes("opencode:material-changed"), "「" + label + "」应广播材质变更事件");
+    }
+  } finally {
+    delete globalThis.window;
+  }
+});
+
 test("设置页渲染冒烟：旧 host（缺 tools/projects/health/live.rate60）不应崩", async () => {
   const oldPayload = (range) => {
     const p = payload(range);

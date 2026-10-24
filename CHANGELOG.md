@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+### 悬浮面板材质：经典（默认）+ 液态玻璃 / 亚克力 / 哑光纸（2026-10-21，样板见 `docs/mockups/panel-materials.html`）
+
+#### Added
+- 悬浮小窗新增「材质」外观层，四档可选，入口在「数据源与通用 → 面板材质」：
+  **经典**（默认，= 材质层引入前的原背板）、
+  **液态玻璃**（低半径模糊 + 指针跟随镜面高光 + 渐变描边）、
+  **亚克力**（38px 强模糊 + feTurbulence 噪点，景深最强）、
+  **哑光纸**（不透明暖白 + 纸纹，零背景模糊）。
+- 材质选择存 `localStorage["oq_panel_material"]`（不写插件配置），默认 `classic`；
+  切换通过 `opencode:material-changed` 事件即时生效，跨标签页另有 `storage` 兜底。
+- `docs/mockups/panel-materials.html`：10 款材质样板页（首张为默认经典背板），可切明暗主题与
+  4 种背景（编辑器 / 照片 / 极光 / 浅色），支持 `?theme=light&bg=photo` 固定一组便于截图对照。
+
+#### Changed
+- **默认外观未变**：老用户升级后仍是原背板。`classic` 直接复用基础 `.oq-card` 的
+  `--dsw-alias-bg-layer-2` / `--dsw-alias-border-l1` / `--dsw-shadow-lv3` / `blur(10px)`，
+  只把材质层借用的 `::before` / `::after` 关掉（`content:none`），
+  computed style 与"无材质类"逐项比对一致（背景、边框、阴影、模糊、圆角、尺寸全部相同）。
+- 玻璃系材质在作用域内覆盖 `--dsw-alias-bg-layer-*`：`renderTmCompact` 的瓦片与
+  DeepSeek 余额行用的是*内联* `background`，只写类选择器盖不住，否则玻璃面板里会嵌着不透明的深色砖。
+- 亮色主题（`prefers-color-scheme: light`）为玻璃系单独一套底色/描边/内阴影，
+  避免深色玻璃底叠深色文字；`prefers-reduced-motion` 下玻璃系退回实色渐变，省掉每帧模糊开销。
+- 哑光纸自带浅色语义变量与热力色阶（深色主题下不会白底白字），并覆盖柱槽 / 网格线 / 进度槽 /
+  时间线 / 环形进度轨道等硬编码白色的部件。
+
+#### 已知
+- `test/host.test.mjs:478`（hours 7×24 矩阵按本地星期累计）在本机失败，
+  与本次改动无关（只改了 `lib/client.js`，host 侧未动；断言期望周六 15 点为 110、实得 0）。
+
 ### 用量统计外观：五模块 A/B/C 可切换（2026-10-17，详见 `docs/design-usage-ui.md`）
 
 #### Added

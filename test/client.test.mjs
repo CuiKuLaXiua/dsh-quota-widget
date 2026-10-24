@@ -67,3 +67,39 @@ test("fmtTokens：0/无效值不显示为数字", () => {
   assert.equal(fmtTokens(null), "—");
   assert.equal(fmtTokens("abc"), "—");
 });
+
+// ── 悬浮面板材质（classic / liquid / acrylic / paper）──
+// 材质只影响外观，但"读回什么"决定了渲染出的类名（.oq-card m-<x>）。
+// 默认必须是 classic（材质层引入之前的原背板），老用户升级后观感不变；
+// 非法值也必须落回 classic，否则会挂上一个不存在的类名（面板退回无材质底）。
+test("loadPanelMaterial：默认经典背板，其余为可选项，非法值回落经典", () => {
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  const fired = [];
+  globalThis.window = { dispatchEvent: (e) => fired.push(e && e.type) };
+  const { loadPanelMaterial, savePanelMaterial, PANEL_MATERIALS } = T;
+
+  assert.deepEqual(PANEL_MATERIALS, ["classic", "liquid", "acrylic", "paper"]);
+  assert.equal(PANEL_MATERIALS[0], "classic", "经典必须是默认（列表首项）");
+  assert.equal(loadPanelMaterial(), "classic", "无存储时默认经典背板");
+
+  for (const m of PANEL_MATERIALS) {
+    fired.length = 0;
+    savePanelMaterial(m);
+    assert.equal(loadPanelMaterial(), m, "应能读回 " + m);
+    assert.ok(fired.includes("opencode:material-changed"), "保存后应广播材质变更事件");
+  }
+
+  // 老版本可能存过 liquid 之外的值；这里只验证"非法值"回落
+  mem.set("oq_panel_material", "frosted-glass");
+  assert.equal(loadPanelMaterial(), "classic", "非法材质应回落经典");
+  savePanelMaterial("frosted-glass");
+  assert.equal(mem.get("oq_panel_material"), "classic", "非法值不应写进 localStorage");
+
+  delete globalThis.localStorage;
+  delete globalThis.window;
+});

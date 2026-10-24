@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark" data-bg="grid">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>悬浮面板 · 材质样板</title>
+<style>
+/* ══════════════════════════════════════════════
+   舞台 / 页面基础
+   ══════════════════════════════════════════════ */
+:root{
+  --page:#0c0d12;
+  --page2:#14161d;
+  --txt:#eceef6;
+  --txt2:#9b9dae;
+  --txt3:#6d7080;
+  --hair:rgba(255,255,255,.09);
+  --brand:#8b7bff;
+  --noise:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+html[data-theme=light]{
+  --page:#eceef4;
+  --page2:#f6f7fb;
+  --txt:#1a1c24;
+  --txt2:#5a5d6d;
+  --txt3:#8a8d9c;
+  --hair:rgba(16,18,26,.10);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--page);color:var(--txt);
+  font:13px/1.55 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+  transition:background .3s,color .3s;
+}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:1220px;margin:0 auto;padding:26px 22px 90px}
+
+/* ── 顶栏 ── */
+.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px}
+.top h1{font-size:16px;margin:0;font-weight:750;letter-spacing:.2px}
+.top .grow{flex:1}
+.lead{margin:6px 0 18px;font-size:11.5px;color:var(--txt3);line-height:1.7;max-width:760px}
+.seg{display:inline-flex;gap:3px;background:rgba(125,125,145,.10);border:1px solid var(--hair);padding:3px;border-radius:999px}
+.seg button{
+  background:none;border:none;color:var(--txt3);font:inherit;font-size:11px;
+  padding:4px 11px;border-radius:999px;cursor:pointer;transition:.15s;white-space:nowrap;
+}
+.seg button:hover{color:var(--txt)}
+.seg button.on{background:rgba(139,123,255,.16);color:var(--brand);font-weight:700;box-shadow:inset 0 0 0 1px rgba(139,123,255,.28)}
+.seglabel{font-size:10px;color:var(--txt3);margin-right:2px}
+
+/* ══════════════════════════════════════════════
+   舞台：四种背景，用来验证透明材质的景深
+   ══════════════════════════════════════════════ */
+.stage{
+  position:relative;border-radius:20px;overflow:hidden;
+  border:1px solid var(--hair);
+  padding:34px 26px 30px;
+  isolation:isolate;
+  background:var(--page2);
+  transition:background .3s;
+}
+.scene{position:absolute;inset:0;z-index:0;pointer-events:none}
+/* 代码行纹理：真实场景里面板下面就是编辑器文本，模糊是否"糊成一片"一看就知道 */
+.scene .code{
+  position:absolute;inset:0;
+  background:
+    repeating-linear-gradient(to bottom,
+      rgba(255,255,255,.13) 0 1px, transparent 1px 26px),
+    repeating-linear-gradient(to right,
+      transparent 0 68px, rgba(255,255,255,.05) 68px 69px, transparent 69px 100%);
+  mask-image:linear-gradient(160deg,#000 0%,rgba(0,0,0,.55) 45%,transparent 85%);
+  opacity:.5;
+}
+.scene .blob{position:absolute;border-radius:50%;filter:blur(38px);opacity:.85}
+.stage[data-bg=grid]{
+  background:
+    radial-gradient(700px 380px at 78% -8%, rgba(109,91,255,.20), transparent 70%),
+    radial-gradient(520px 320px at 4% 96%, rgba(14,165,233,.16), transparent 72%),
+    #0d0f16;
+}
+.stage[data-bg=grid] .scene .b1{width:260px;height:260px;left:8%;top:-90px;background:#5b4bd6}
+.stage[data-bg=grid] .scene .b2{width:220px;height:220px;right:6%;bottom:-80px;background:#0e7fa8}
+.stage[data-bg=photo]{
+  background:
+    radial-gradient(600px 420px at 18% 10%, #c98b63 0%, rgba(201,139,99,0) 62%),
+    radial-gradient(700px 480px at 88% 84%, #4b6f8f 0%, rgba(75,111,143,0) 64%),
+    linear-gradient(145deg,#2a2018 0%,#3a2b21 42%,#1d2733 100%);
+}
+.stage[data-bg=photo] .scene .b1{width:340px;height:340px;left:24%;top:-120px;background:#e2a36f;opacity:.6}
+.stage[data-bg=photo] .scene .b2{width:280px;height:280px;right:12%;bottom:-100px;background:#3f6f96;opacity:.7}
+.stage[data-bg=photo] .scene .code{opacity:.18}
+.stage[data-bg=light]{
+  background:
+    radial-gradient(640px 380px at 20% 0%, #ffffff, transparent 66%),
+    radial-gradient(600px 420px at 92% 96%, #dfe3f2, transparent 70%),
+    linear-gradient(160deg,#f7f8fc,#e7eaf3);
+}
+.stage[data-bg=light] .scene .code{
+  background:
+    repeating-linear-gradient(to bottom, rgba(16,20,40,.10) 0 1px, transparent 1px 26px),
+    repeating-linear-gradient(to right, transparent 0 68px, rgba(16,20,40,.04) 68px 69px, transparent 69px 100%);
+  opacity:.7;
+}
+.stage[data-bg=light] .scene .b1{width:300px;height:300px;left:-60px;top:-100px;background:#b9c6f0;opacity:.55}
+.stage[data-bg=light] .scene .b2{width:260px;height:260px;right:-40px;bottom:-80px;background:#f0c9b6;opacity:.5}
+/* 极光：高饱和流体背景，专门考验透明材质会不会"糊成灰"（压暗一档，接近真实壁纸亮度） */
+.stage[data-bg=aurora]{
+  background:
+    radial-gradient(560px 420px at 16% 8%, rgba(123,63,228,.72) 0%, transparent 62%),
+    radial-gradient(520px 380px at 84% 22%, rgba(14,165,233,.62) 0%, transparent 64%),
+    radial-gradient(620px 420px at 62% 96%, rgba(219,39,119,.52) 0%, transparent 66%),
+    radial-gradient(420px 320px at 6% 86%, rgba(16,185,129,.46) 0%, transparent 68%),
+    #08090f;
+}
+.stage[data-bg=aurora] .scene .b1{width:420px;height:420px;left:30%;top:-160px;background:#8b5cf6;opacity:.35}
+.stage[data-bg=aurora] .scene .b2{width:360px;height:360px;right:-80px;bottom:-120px;background:#db2777;opacity:.35}
+.stage[data-bg=aurora] .scene .code{opacity:.12}
+
+/* ── 卡片容器 ── */
+.grid{
+  position:relative;z-index:1;
+  display:grid;gap:26px 22px;
+  grid-template-columns:repeat(auto-fill,minmax(276px,1fr));
+  justify-items:center;
+}
+.demo{display:flex;flex-direction:column;align-items:center;gap:9px;width:100%;max-width:300px}
+.demo-head{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--txt2);white-space:nowrap}
+.demo-head b{font-size:11.5px;color:var(--txt);font-weight:700}
+.demo-head .en{font-size:9.5px;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em}
+.demo-head .cost{font-size:9px;padding:1px 6px;border-radius:999px;border:1px solid var(--hair);color:var(--txt3)}
+.demo-note{font-size:9.5px;color:var(--txt3);text-align:center;line-height:1.5;min-height:28px}
+details.css{width:260px;font-size:9.5px;color:var(--txt3)}
+details.css summary{cursor:pointer;list-style:none;text-align:center;opacity:.62;transition:.15s}
+details.css summary::-webkit-details-marker{display:none}
+details.css summary:hover{opacity:1;color:var(--brand)}
+details.css pre{
+  margin:6px 0 0;padding:8px 9px;border-radius:8px;border:1px solid var(--hair);
+  background:rgba(125,125,145,.09);color:var(--txt2);font-size:9px;line-height:1.6;
+  white-space:pre-wrap;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+
+/* ══════════════════════════════════════════════
+   面板本体（260px，与插件一致）
+   ══════════════════════════════════════════════ */
+.panel{
+  position:relative;width:260px;flex:none;
+  border-radius:16px;
+  padding:9px;
+  display:flex;flex-direction:column;gap:7px;
+  cursor:grab;overflow:hidden;isolation:isolate;
+  transition:transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s;
+  /* 内层内容文字色，各材质按需覆盖 */
+  --fg:#f1f2f8; --fg2:#a6a9bb; --fg3:#7b7e90;
+  --hair2:rgba(255,255,255,.09);
+  --accent:#8b7bff; --accent2:#6d5bff;
+  --track:rgba(255,255,255,.10);
+}
+.panel:active{cursor:grabbing}
+.panel:hover{transform:translateY(-2px)}
+html[data-theme=light] .panel{
+  --fg:#1b1d26; --fg2:#5b5e6e; --fg3:#8b8e9c;
+  --hair2:rgba(16,20,40,.09);
+  --track:rgba(16,20,40,.08);
+}
+
+/* 面板内容：统一抬到材质装饰层（高光 / 噪点 / 描边）之上，保证任何材质下文字都在最上层 */
+.p-head,.p-rows,.p-foot{position:relative;z-index:5}
+.p-head{display:flex;align-items:center;gap:8px;min-width:0}
+.p-ring{
+  position:relative;width:32px;height:32px;flex:none;border-radius:50%;
+  background:conic-gradient(var(--accent) calc(var(--p,42)*1%), var(--track) 0);
+  display:grid;place-items:center;
+}
+.p-ring::after{content:"";position:absolute;inset:3.5px;border-radius:50%;background:var(--ring-hole,#1a1b22)}
+html[data-theme=light] .panel{--ring-hole:#fff}
+.p-ring b{position:relative;z-index:1;font-size:9.5px;font-weight:800;color:var(--fg);letter-spacing:-.2px}
+.p-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.p-title{font-size:12px;font-weight:700;color:var(--fg);display:flex;align-items:center;gap:5px;line-height:1.25}
+.p-title .tag{
+  font-style:normal;font-size:8.5px;font-weight:700;padding:1px 5px;border-radius:999px;
+  color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);
+}
+.p-sub{font-size:10px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.p-rows{display:flex;flex-direction:column;gap:5px;padding:1px 0}
+.p-row{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--fg2)}
+.p-row .k{flex:none;width:22px;letter-spacing:.02em}
+.p-track{flex:1;height:5px;border-radius:999px;background:var(--track);overflow:hidden;box-shadow:inset 0 1px 1px rgba(0,0,0,.16)}
+.p-track i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent2),var(--accent));box-shadow:0 0 7px color-mix(in srgb,var(--accent) 55%,transparent)}
+.p-row b{flex:none;width:27px;text-align:right;font-size:10px;font-weight:750;color:var(--fg)}
+.p-foot{display:flex;align-items:center;justify-content:space-between;font-size:9px;color:var(--fg3);padding-top:1px}
+.p-dots{letter-spacing:2px;font-size:8px}
+.p-dots .on{color:var(--accent)}
+
+/* ══════════════════════════════════════════════
+   材质 0 · 经典背板 Classic（插件默认，等于材质层引入前的样子）
+   bg-layer-2 + border-l1 + shadow-lv3 + blur(10px)，没有任何装饰伪元素
+   ══════════════════════════════════════════════ */
+.m-classic{
+  --fg:#f1f2f8; --fg2:#a6a9bb; --fg3:#7b7e90;
+  --track:rgba(255,255,255,.10);
+  --accent:#8b7bff; --accent2:#6d5bff;
+  background:var(--card,#1a1a1f);
+  border:1px solid var(--hair);
+  box-shadow:var(--shadow,0 10px 30px rgba(0,0,0,.35));
+  -webkit-backdrop-filter:blur(10px);
+  backdrop-filter:blur(10px);
+}
+html[data-theme=light] .m-classic{
+  --fg:#1b1d26; --fg2:#5b5e6e; --fg3:#8b8e9c;
+  --track:rgba(16,20,40,.08);
+  --ring-hole:#fff;
+  background:#fff;
+}
+.m-classic .p-ring::after{background:var(--ring-hole,#1a1a1f)}
+
+/* ══════════════════════════════════════════════
+   材质 1 · 磨砂玻璃 Frosted Glass
+   ══════════════════════════════════════════════ */
+.m-frost{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.105), rgba(255,255,255,.035)),
+    rgba(22,23,31,.42);
+  -webkit-backdrop-filter:blur(22px) saturate(175%);
+  backdrop-filter:blur(22px) saturate(175%);
+  border:1px solid rgba(255,255,255,.15);
+  box-shadow:
+    0 18px 42px -16px rgba(0,0,0,.72),
+    inset 0 1px 0 rgba(255,255,255,.20),
+    inset 0 -1px 0 rgba(0,0,0,.30);
+}
+.m-frost::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:var(--noise);opacity:.045;mix-blend-mode:overlay;
+}
+html[data-theme=light] .m-frost{
+  background:linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.58));
+  border-color:rgba(255,255,255,.95);
+  box-shadow:
+    0 18px 38px -18px rgba(30,36,60,.30),
+    inset 0 1px 0 rgba(255,255,255,.95),
+    inset 0 -1px 0 rgba(20,26,50,.06);
+}
+html[data-theme=light] .m-frost::after{opacity:.03}
+
+/* ══════════════════════════════════════════════
+   材质 2 · 液态玻璃 Liquid Glass
+   ══════════════════════════════════════════════ */
+.m-liquid{
+  background:
+    radial-gradient(150% 95% at 14% -14%, rgba(255,255,255,.38), rgba(255,255,255,0) 54%),
+    radial-gradient(120% 85% at 92% 118%, rgba(139,123,255,.30), rgba(139,123,255,0) 62%),
+    rgba(255,255,255,.055);
+  -webkit-backdrop-filter:blur(7px) saturate(210%) brightness(1.06);
+  backdrop-filter:blur(7px) saturate(210%) brightness(1.06);
+  border:1px solid rgba(255,255,255,.10);
+  box-shadow:
+    0 22px 48px -18px rgba(0,0,0,.78),
+    0 0 0 1px rgba(255,255,255,.05),
+    inset 0 1px 1px rgba(255,255,255,.42),
+    inset 0 -18px 28px -20px rgba(139,123,255,.55);
+}
+/* 折射高光：跟着指针走的镜面斑 */
+.m-liquid .spec{
+  position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;z-index:2;
+  background:radial-gradient(120px 90px at var(--mx,18%) var(--my,0%),
+    rgba(255,255,255,.34), rgba(255,255,255,.10) 38%, rgba(255,255,255,0) 66%);
+  mix-blend-mode:screen;opacity:.85;transition:opacity .2s;
+}
+/* 斜向玻璃断开线，模拟"液态"的边缘折光 */
+.m-liquid::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;
+  background:
+    linear-gradient(126deg, rgba(255,255,255,.16) 0 1px, rgba(255,255,255,0) 1px 100%) 0 0/100% 100%,
+    radial-gradient(80% 40% at 50% 104%, rgba(255,255,255,.16), rgba(255,255,255,0) 70%);
+  opacity:.75;
+}
+/* 渐变描边（mask 挖空） */
+.m-liquid::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;z-index:3;
+  background:linear-gradient(142deg,
+    rgba(255,255,255,.72), rgba(255,255,255,.10) 32%,
+    rgba(255,255,255,.02) 56%, rgba(255,255,255,.42));
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite:exclude;
+}
+html[data-theme=light] .m-liquid{
+  background:
+    radial-gradient(150% 95% at 14% -14%, rgba(255,255,255,.95), rgba(255,255,255,.2) 58%),
+    radial-gradient(120% 85% at 92% 118%, rgba(139,123,255,.22), rgba(139,123,255,0) 62%),
+    rgba(255,255,255,.42);
+  border-color:rgba(255,255,255,.7);
+  box-shadow:
+    0 22px 44px -20px rgba(30,36,60,.32),
+    inset 0 1px 1px rgba(255,255,255,.95),
+    inset 0 -18px 28px -20px rgba(139,123,255,.32);
+}
+
+/* ══════════════════════════════════════════════
+   材质 3 · 亚克力 Acrylic（Win11 风：强模糊 + 噪点）
+   ══════════════════════════════════════════════ */
+.m-acrylic{
+  background:linear-gradient(180deg, rgba(38,40,52,.66), rgba(24,26,34,.80));
+  -webkit-backdrop-filter:blur(38px) saturate(155%) brightness(1.10);
+  backdrop-filter:blur(38px) saturate(155%) brightness(1.10);
+  border:1px solid rgba(255,255,255,.12);
+  box-shadow:
+    0 26px 52px -22px rgba(0,0,0,.85),
+    inset 0 0 0 1px rgba(255,255,255,.03),
+    inset 0 1px 0 rgba(255,255,255,.13);
+}
+.m-acrylic::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:var(--noise);opacity:.075;mix-blend-mode:overlay;
+}
+html[data-theme=light] .m-acrylic{
+  background:linear-gradient(180deg, rgba(252,253,255,.80), rgba(244,246,252,.88));
+  border-color:rgba(255,255,255,.9);
+  box-shadow:0 22px 44px -22px rgba(30,36,60,.28), inset 0 1px 0 #fff;
+}
+html[data-theme=light] .m-acrylic::after{opacity:.05}
+
+/* ══════════════════════════════════════════════
+   材质 4 · 钛金拉丝 Brushed Titanium
+   ══════════════════════════════════════════════ */
+.m-metal{
+  --fg:#eef1f8; --fg2:#b3b9c9; --fg3:#7f8697;
+  --hair2:rgba(255,255,255,.10); --track:rgba(0,0,0,.34);
+  --accent:#9fc4ff; --accent2:#6f93d6;
+  background:
+    repeating-linear-gradient(92deg,
+      rgba(255,255,255,.055) 0 1px, rgba(0,0,0,.055) 1px 2px, rgba(255,255,255,.02) 2px 3px),
+    linear-gradient(146deg,#40454f 0%,#23262e 34%,#31353f 50%,#191b21 76%,#282c35 100%);
+  border:1px solid rgba(255,255,255,.16);
+  box-shadow:
+    0 26px 48px -20px rgba(0,0,0,.9),
+    inset 0 1px 0 rgba(255,255,255,.40),
+    inset 0 -1px 0 rgba(0,0,0,.65),
+    inset 0 0 0 1px rgba(255,255,255,.03);
+}
+.m-metal::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(104deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,.03) 26%, transparent 46%, rgba(255,255,255,.06) 82%, transparent 100%);
+  mix-blend-mode:screen;
+}
+.m-metal .p-title .tag{border-color:rgba(159,196,255,.32);background:rgba(159,196,255,.12)}
+/* 拉丝是深色材质，亮色主题下也保持深色金属——必须复写 .panel 的亮色文字变量 */
+html[data-theme=light] .m-metal{
+  --fg:#eef1f8; --fg2:#b3b9c9; --fg3:#828a9c;
+  --hair2:rgba(255,255,255,.10); --track:rgba(0,0,0,.34);
+  --accent:#9fc4ff; --accent2:#6f93d6; --ring-hole:#282c35;
+  border-color:rgba(255,255,255,.18);
+}
+
+/* ══════════════════════════════════════════════
+   材质 5 · 釉面陶瓷 Glazed Ceramic
+   ══════════════════════════════════════════════ */
+.m-ceramic{
+  background:linear-gradient(158deg,#2c2f3b 0%,#20222c 46%,#15171d 100%);
+  border:1px solid rgba(255,255,255,.07);
+  box-shadow:
+    0 24px 46px -20px rgba(0,0,0,.88),
+    inset 0 2px 1px rgba(255,255,255,.16),
+    inset 0 -16px 26px -20px rgba(0,0,0,.95),
+    inset 0 0 0 1px rgba(255,255,255,.045);
+}
+.m-ceramic::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:
+    radial-gradient(90% 60% at 22% 0%, rgba(255,255,255,.13), rgba(255,255,255,0) 58%),
+    radial-gradient(70% 50% at 88% 100%, rgba(139,123,255,.10), rgba(139,123,255,0) 62%);
+}
+.m-ceramic::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:var(--noise);opacity:.03;mix-blend-mode:overlay;
+}
+html[data-theme=light] .m-ceramic{
+  background:linear-gradient(158deg,#ffffff 0%,#f4f5fa 46%,#e6e9f2 100%);
+  border-color:rgba(255,255,255,.95);
+  box-shadow:
+    0 22px 40px -20px rgba(32,38,62,.24),
+    inset 0 2px 1px rgba(255,255,255,1),
+    inset 0 -16px 26px -20px rgba(32,38,62,.14),
+    inset 0 0 0 1px rgba(255,255,255,.7);
+}
+html[data-theme=light] .m-ceramic::before{
+  background:
+    radial-gradient(90% 60% at 22% 0%, rgba(255,255,255,1), rgba(255,255,255,0) 58%),
+    radial-gradient(70% 50% at 88% 100%, rgba(139,123,255,.08), rgba(139,123,255,0) 62%);
+}
+
+/* ══════════════════════════════════════════════
+   材质 6 · 黑曜石 Obsidian
+   ══════════════════════════════════════════════ */
+.m-obsidian{
+  background:linear-gradient(152deg,#15161f 0%,#0a0b10 52%,#16111f 100%);
+  border:1px solid rgba(255,255,255,.065);
+  box-shadow:
+    0 28px 54px -22px #000,
+    0 0 24px -14px rgba(139,123,255,.55),
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 -20px 30px -22px rgba(0,0,0,1);
+}
+.m-obsidian::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:
+    linear-gradient(118deg,
+      transparent 16%, rgba(255,255,255,.075) 17.2%, rgba(255,255,255,.015) 23%, transparent 24%),
+    linear-gradient(118deg,
+      transparent 58%, rgba(255,255,255,.05) 59.2%, transparent 60.5%),
+    radial-gradient(70% 50% at 90% 6%, rgba(139,123,255,.22), rgba(139,123,255,0) 62%);
+}
+.m-obsidian::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:var(--noise);opacity:.04;mix-blend-mode:overlay;
+}
+html[data-theme=light] .m-obsidian{
+  background:linear-gradient(152deg,#2a2b36 0%,#1b1c25 55%,#241d2e 100%);
+  border-color:rgba(255,255,255,.12);
+}
+html[data-theme=light] .m-obsidian{--fg:#f3f4fa;--fg2:#b6b9c9;--fg3:#8b8ea0;--track:rgba(255,255,255,.12);--hair2:rgba(255,255,255,.10);--ring-hole:#1d1e27}
+
+/* ══════════════════════════════════════════════
+   材质 7 · 极光 Aurora
+   ══════════════════════════════════════════════ */
+.m-aurora{
+  background:rgba(20,17,32,.50);
+  -webkit-backdrop-filter:blur(20px) saturate(190%);
+  backdrop-filter:blur(20px) saturate(190%);
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:
+    0 22px 48px -18px rgba(0,0,0,.78),
+    inset 0 1px 0 rgba(255,255,255,.22),
+    inset 0 -1px 0 rgba(0,0,0,.35);
+}
+.m-aurora::before{
+  content:"";position:absolute;inset:-15%;border-radius:inherit;pointer-events:none;z-index:-1;
+  background:
+    radial-gradient(46% 48% at 18% 16%, rgba(139,123,255,.95), transparent 66%),
+    radial-gradient(42% 44% at 82% 12%, rgba(14,165,233,.80), transparent 68%),
+    radial-gradient(48% 50% at 68% 90%, rgba(236,72,153,.62), transparent 70%),
+    radial-gradient(42% 44% at 8% 88%, rgba(16,185,129,.58), transparent 70%);
+  filter:blur(14px) saturate(140%);
+  opacity:.95;
+}
+.m-aurora::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 30%);
+}
+html[data-theme=light] .m-aurora{
+  background:rgba(255,255,255,.55);
+  border-color:rgba(255,255,255,.85);
+  box-shadow:0 22px 44px -20px rgba(30,36,60,.30), inset 0 1px 0 #fff;
+}
+html[data-theme=light] .m-aurora::before{opacity:.5;filter:blur(22px)}
+
+/* ══════════════════════════════════════════════
+   材质 8 · 霓虹玻璃 Neon HUD
+   ══════════════════════════════════════════════ */
+.m-neon{
+  --accent:#8b7bff; --accent2:#38bdf8;
+  background:
+    radial-gradient(120% 90% at 50% -20%, rgba(139,123,255,.20), rgba(139,123,255,0) 62%),
+    linear-gradient(180deg, rgba(19,20,32,.86), rgba(11,12,20,.92));
+  -webkit-backdrop-filter:blur(14px) saturate(180%);
+  backdrop-filter:blur(14px) saturate(180%);
+  border:1px solid rgba(139,123,255,.38);
+  box-shadow:
+    0 0 0 1px rgba(139,123,255,.16),
+    0 0 26px -6px rgba(139,123,255,.55),
+    0 22px 44px -20px #000,
+    inset 0 0 34px -18px rgba(139,123,255,.95);
+}
+.m-neon::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:
+    linear-gradient(180deg, rgba(139,123,255,.16), transparent 22%),
+    linear-gradient(90deg, transparent, rgba(56,189,248,.10) 50%, transparent);
+  opacity:.8;
+}
+.m-neon .p-track i{background:linear-gradient(90deg,#6d5bff,#8b7bff 55%,#38bdf8);box-shadow:0 0 9px rgba(139,123,255,.75)}
+html[data-theme=light] .m-neon{
+  background:linear-gradient(180deg, rgba(255,255,255,.88), rgba(246,247,255,.92));
+  border-color:rgba(139,123,255,.32);
+  box-shadow:0 0 0 1px rgba(139,123,255,.10), 0 20px 40px -20px rgba(70,60,140,.35), inset 0 0 30px -20px rgba(139,123,255,.7);
+}
+
+/* ══════════════════════════════════════════════
+   材质 9 · 哑光纸 Paper
+   ══════════════════════════════════════════════ */
+.m-paper{
+  --fg:#2a2318; --fg2:#6b6152; --fg3:#96897a;
+  --hair2:rgba(94,78,52,.16); --track:rgba(94,78,52,.14);
+  --accent:#8a6a3a; --accent2:#a9854d;
+  --ring-hole:#fbf7ee;
+  background:linear-gradient(170deg,#fdfaf3 0%,#f7f2e6 55%,#f1ebdd 100%);
+  border:1px solid rgba(120,100,70,.20);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.9) inset,
+    0 16px 30px -16px rgba(61,50,30,.38),
+    0 2px 6px -2px rgba(61,50,30,.16);
+}
+.m-paper::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:var(--noise);opacity:.05;mix-blend-mode:multiply;
+}
+.m-paper .p-title .tag{background:rgba(138,106,58,.10);border-color:rgba(138,106,58,.24)}
+.m-paper .p-track i{box-shadow:none}
+
+/* ══════════════════════════════════════════════
+   收尾说明
+   ══════════════════════════════════════════════ */
+.tail{
+  position:relative;z-index:1;margin-top:26px;padding-top:18px;border-top:1px solid var(--hair);
+  display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+}
+.tail article{padding:10px 12px;border-radius:11px;border:1px solid var(--hair);background:rgba(125,125,145,.06)}
+.tail h3{margin:0 0 4px;font-size:11px;font-weight:700;color:var(--txt)}
+.tail p{margin:0;font-size:10.5px;line-height:1.65;color:var(--txt3)}
+.tail code{font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--brand)}
+@media (max-width:640px){
+  .wrap{padding:18px 12px 70px}
+  .stage{padding:22px 12px}
+  .grid{grid-template-columns:minmax(0,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <h1>悬浮面板 · 材质样板</h1>
+    <span class="seglabel">主题</span>
+    <div class="seg" id="themeSeg">
+      <button data-theme="dark" class="on">暗色</button>
+      <button data-theme="light">亮色</button>
+    </div>
+    <span class="seglabel">背景</span>
+    <div class="seg" id="bgSeg">
+      <button data-bg="grid" class="on">编辑器</button>
+      <button data-bg="photo">照片</button>
+      <button data-bg="aurora">极光</button>
+      <button data-bg="light">浅色</button>
+    </div>
+    <span class="grow"></span>
+  </div>
+  <p class="lead">
+    第 1 张是<b>插件当前默认的「经典背板」</b>（= 材质层引入前的原样），其余为可选材质；
+    带「已落地」标记的三款（液态玻璃 / 亚克力 / 哑光纸）已可在「设置 → 用量与额度 → 通用 → 面板材质」切换。
+    全部 <b>纯 CSS</b>（零图片、零依赖），面板尺寸与插件一致 260px。
+    右上角切换背景 / 明暗，重点看：文字是否仍然清晰、边框是否"发脏"、模糊后底层内容是否还能透出层次。
+  </p>
+
+  <div class="stage" id="stage" data-bg="grid">
+    <div class="scene">
+      <div class="code"></div>
+      <div class="blob b1"></div>
+      <div class="blob b2"></div>
+    </div>
+    <div class="grid" id="grid"></div>
+
+    <div class="tail">
+      <article>
+        <h3>当前落点</h3>
+        <p>默认 <b>经典背板</b>（老用户升级后观感不变）；可选 <b>液态玻璃</b> / <b>亚克力</b> / <b>哑光纸</b>，在设置里手动切换，只存本机 localStorage。其余 6 款为设计备选，未接入插件。</p>
+      </article>
+      <article>
+        <h3>落地注意</h3>
+        <p>面板是 <code>position:fixed</code> 悬浮层，<code>backdrop-filter</code> 会按帧重算模糊。低端机可降级为不透明渐变；<code>overflow:hidden</code> 已加，避免模糊边缘溢出圆角。</p>
+      </article>
+      <article>
+        <h3>主题变量</h3>
+        <p>材质层只改背景 / 边框 / 阴影，文字与进度条颜色全部走 <code>--dsw-alias-*</code>，明暗主题各自一套，不改插件原有语义色。</p>
+      </article>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  /* ── 面板内容（各材质共用，保证对比公平）── */
+  function panel(){
+    return ''+
+      '<div class="p-head">'+
+        '<div class="p-ring" style="--p:42"><b>42%</b></div>'+
+        '<div class="p-meta">'+
+          '<div class="p-title">Opencode <i class="tag">Go</i></div>'+
+          '<div class="p-sub">剩 58% · 2h 41m 后重置</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="p-rows">'+
+        '<div class="p-row"><span class="k">滚动</span><div class="p-track"><i style="width:42%"></i></div><b class="num">42%</b></div>'+
+        '<div class="p-row"><span class="k">每周</span><div class="p-track"><i style="width:71%"></i></div><b class="num">71%</b></div>'+
+        '<div class="p-row"><span class="k">每月</span><div class="p-track"><i style="width:28%"></i></div><b class="num">28%</b></div>'+
+      '</div>'+
+      '<div class="p-foot"><span>每 120s 刷新</span><span class="p-dots"><span class="on">●</span> ○ ○ ○</span></div>';
+  }
+
+  var VARIANTS = [
+    {
+      id:'classic', name:'经典背板', en:'Classic', cost:'默认',
+      note:'插件原有外观，也是当前默认值：bg-layer-2 + lv3 阴影 + blur(10px)，无装饰伪元素。',
+      css:'background: var(--dsw-alias-bg-layer-2,#1a1a1f);\n'+
+          'border: 1px solid var(--dsw-alias-border-l1,rgba(255,255,255,.08));\n'+
+          'box-shadow: var(--dsw-shadow-lv3,0 10px 30px rgba(0,0,0,.35));\n'+
+          'backdrop-filter: blur(10px);\n'+
+          '/* 关闭材质层的装饰伪元素 */\n'+
+          '.oq-card.m-classic::before,\n'+
+          '.oq-card.m-classic::after { content: none; display: none }'
+    },
+    {
+      id:'frost', name:'磨砂玻璃', en:'Frosted Glass', cost:'未采用',
+      note:'最通用。任何背景都稳，模糊后仍能看出层次。',
+      css:'background: linear-gradient(180deg,rgba(255,255,255,.105),rgba(255,255,255,.035)), rgba(22,23,31,.42);\n'+
+          'backdrop-filter: blur(22px) saturate(175%);\n'+
+          'border: 1px solid rgba(255,255,255,.15);\n'+
+          'box-shadow: 0 18px 42px -16px rgba(0,0,0,.72),\n'+
+          '            inset 0 1px 0 rgba(255,255,255,.20);'
+    },
+    {
+      id:'liquid', name:'液态玻璃', en:'Liquid Glass', cost:'已落地',
+      note:'指针跟随镜面高光 + 渐变描边，最"高级"但需 JS 传坐标。',
+      css:'backdrop-filter: blur(7px) saturate(210%) brightness(1.06);\n'+
+          'background: radial-gradient(150% 95% at 14% -14%,rgba(255,255,255,.38),transparent 54%),\n'+
+          '            radial-gradient(120% 85% at 92% 118%,rgba(139,123,255,.30),transparent 62%),\n'+
+          '            rgba(255,255,255,.055);\n'+
+          '/* 渐变描边：padding + mask 挖空 */\n'+
+          'mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);\n'+
+          'mask-composite: exclude;'
+    },
+    {
+      id:'acrylic', name:'亚克力', en:'Acrylic', cost:'已落地',
+      note:'Win11 风：大半径模糊 + 噪点。景深最强，GPU 开销也最高。',
+      css:'backdrop-filter: blur(38px) saturate(155%) brightness(1.10);\n'+
+          'background: linear-gradient(180deg,rgba(38,40,52,.66),rgba(24,26,34,.80));\n'+
+          '/* 噪点：feTurbulence 内联 SVG */\n'+
+          'background-image: var(--noise);\n'+
+          'mix-blend-mode: overlay; opacity: .075;'
+    },
+    {
+      id:'metal', name:'钛金拉丝', en:'Brushed Titanium', cost:'成本 低',
+      note:'不透明，零模糊开销。适合做"工具感/专业感"，暗色更出彩。',
+      css:'background:\n'+
+          '  repeating-linear-gradient(92deg,rgba(255,255,255,.055) 0 1px,rgba(0,0,0,.055) 1px 2px),\n'+
+          '  linear-gradient(146deg,#40454f,#23262e 34%,#31353f 50%,#191b21 76%);\n'+
+          'box-shadow: inset 0 1px 0 rgba(255,255,255,.40),\n'+
+          '            inset 0 -1px 0 rgba(0,0,0,.65);'
+    },
+    {
+      id:'ceramic', name:'釉面陶瓷', en:'Glazed Ceramic', cost:'成本 低',
+      note:'柔和高光 + 大面积内阴影。干净、耐看，明暗都合适。',
+      css:'background: linear-gradient(158deg,#2c2f3b,#20222c 46%,#15171d);\n'+
+          'box-shadow: 0 24px 46px -20px rgba(0,0,0,.88),\n'+
+          '            inset 0 2px 1px rgba(255,255,255,.16),\n'+
+          '            inset 0 -16px 26px -20px rgba(0,0,0,.95);\n'+
+          '/* 顶部柔光 */\n'+
+          'background-image: radial-gradient(90% 60% at 22% 0%,rgba(255,255,255,.13),transparent 58%);'
+    },
+    {
+      id:'obsidian', name:'黑曜石', en:'Obsidian', cost:'成本 低',
+      note:'近黑底 + 斜向玻璃断光。最"沉"，适合长时间盯着的常驻小窗。',
+      css:'background: linear-gradient(152deg,#15161f,#0a0b10 52%,#16111f);\n'+
+          'box-shadow: 0 28px 54px -22px #000,\n'+
+          '            0 0 24px -14px rgba(139,123,255,.55),\n'+
+          '            inset 0 1px 0 rgba(255,255,255,.12);\n'+
+          '/* 断光 */\n'+
+          'background-image: linear-gradient(118deg,transparent 16%,rgba(255,255,255,.075) 17.2%,transparent 24%);'
+    },
+    {
+      id:'aurora', name:'极光', en:'Aurora', cost:'成本 中高',
+      note:'彩色光晕从玻璃后透出。最抢眼，也最容易干扰阅读。',
+      css:'background: rgba(20,17,32,.50);\n'+
+          'backdrop-filter: blur(20px) saturate(190%);\n'+
+          '/* 玻璃后的光晕层 */\n'+
+          'background-image:\n'+
+          '  radial-gradient(38% 40% at 22% 24%,rgba(139,123,255,.75),transparent 68%),\n'+
+          '  radial-gradient(34% 38% at 78% 18%,rgba(14,165,233,.55),transparent 70%),\n'+
+          '  radial-gradient(40% 44% at 62% 86%,rgba(236,72,153,.42),transparent 72%);\n'+
+          'filter: blur(16px);'
+    },
+    {
+      id:'neon', name:'霓虹玻璃', en:'Neon HUD', cost:'成本 低',
+      note:'紫青描边 + 外发光。科技感强，弱光环境最亮眼。',
+      css:'background: linear-gradient(180deg,rgba(19,20,32,.86),rgba(11,12,20,.92));\n'+
+          'border: 1px solid rgba(139,123,255,.38);\n'+
+          'box-shadow: 0 0 26px -6px rgba(139,123,255,.55),\n'+
+          '            inset 0 0 34px -18px rgba(139,123,255,.95);\n'+
+          '/* 进度条 */\n'+
+          'background-image: linear-gradient(90deg,#6d5bff,#8b7bff 55%,#38bdf8);'
+    },
+    {
+      id:'paper', name:'哑光纸', en:'Matte Paper', cost:'已落地',
+      note:'不透明暖白 + 纸纹。亮色主题专属，护眼，零模糊。',
+      css:'background: linear-gradient(170deg,#fdfaf3,#f7f2e6 55%,#f1ebdd);\n'+
+          'border: 1px solid rgba(120,100,70,.20);\n'+
+          'box-shadow: 0 16px 30px -16px rgba(61,50,30,.38),\n'+
+          '            inset 0 1px 0 rgba(255,255,255,.9);\n'+
+          'background-image: var(--noise);\n'+
+          'mix-blend-mode: multiply; opacity: .05;'
+    }
+  ];
+
+  var grid = document.getElementById('grid');
+  grid.innerHTML = VARIANTS.map(function(v){
+    return '<div class="demo">'+
+      '<div class="demo-head"><b>'+v.name+'</b><span class="en">'+v.en+'</span><span class="cost">'+v.cost+'</span></div>'+
+      '<div class="panel m-'+v.id+'">'+
+        (v.id==='liquid' ? '<div class="spec"></div>' : '')+
+        panel()+
+      '</div>'+
+      '<div class="demo-note">'+v.note+'</div>'+
+      '<details class="css"><summary>关键 CSS</summary><pre>'+v.css.replace(/</g,'&lt;')+'</pre></details>'+
+    '</div>';
+  }).join('');
+
+  /* ── 液态玻璃：指针跟随镜面高光 ── */
+  grid.addEventListener('pointermove', function(e){
+    var p = e.target.closest ? e.target.closest('.m-liquid') : null;
+    if(!p) return;
+    var r = p.getBoundingClientRect();
+    p.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100).toFixed(1) + '%');
+    p.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100).toFixed(1) + '%');
+  }, {passive:true});
+
+  /* ── 顶栏切换 ── */
+  function bindSeg(id, key, onPick){
+    var box = document.getElementById(id);
+    box.addEventListener('click', function(e){
+      var btn = e.target.closest('button'); if(!btn) return;
+      Array.prototype.forEach.call(box.children, function(b){ b.classList.remove('on'); });
+      btn.classList.add('on');
+      if(onPick) onPick(btn.dataset[key]);
+    });
+  }
+  bindSeg('themeSeg','theme', function(v){ document.documentElement.dataset.theme = v; });
+  bindSeg('bgSeg','bg', function(v){ document.getElementById('stage').dataset.bg = v; });
+
+  /* ── URL 参数：?theme=light&bg=photo 便于截图对照 / 分享某一组 ── */
+  (function(){
+    var q = new URLSearchParams(location.search);
+    function pick(segId, key, attr, apply){
+      var v = q.get(key); if(!v) return;
+      var box = document.getElementById(segId);
+      var hit = null;
+      Array.prototype.forEach.call(box.children, function(b){
+        b.classList.toggle('on', b.dataset[attr] === v);
+        if(b.dataset[attr] === v) hit = b;
+      });
+      if(hit) apply(v);
+    }
+    pick('themeSeg','theme','theme', function(v){ document.documentElement.dataset.theme = v; });
+    pick('bgSeg','bg','bg', function(v){ document.getElementById('stage').dataset.bg = v; });
+  })();
+})();
+</script>
+</body>
+</html>

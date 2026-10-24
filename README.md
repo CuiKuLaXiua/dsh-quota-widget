@@ -26,6 +26,7 @@ DeepSeek Harness (DSH) 标准插件 — **Opencode / DeepSeek / R4Coder 额度 +
 - **常驻悬浮小窗**：可拖拽、位置持久化、迷你态/收起态
 - **多提供商聚合**：Opencode / DeepSeek / R4Coder / TokenMeter
 - **TokenMeter 持久化**：用量账本写入 `$DSH_HOME/storages/token-meter.db`（90 天保留）
+- **面板材质可切**：经典背板（默认，保持原样）/ 液态玻璃 / 亚克力 / 哑光纸，见「设置 → 用量与额度 → 通用 → 面板材质」
 - **纯主题变量**：使用 `var(--dsw-alias-*)`，自动跟随 DSH 明/暗主题
 - **标准 bundle 插件**：`dsh plugin add` 一条命令安装，无需手工改 patch
 
