@@ -1,6 +1,6 @@
 {
   "name": "dsh-quota-widget",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "用量小窗 · Token / 额度悬浮窗（Opencode · DeepSeek · R4Coder · TokenMeter 聚合）",
   "license": "MIT",
   "type": "module",
