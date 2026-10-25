@@ -11,6 +11,31 @@
   dsh plugin --profile web add file:D:\code\dsh-quota-widget
   ```
 
+## ⚠️ 改 profile 文件必须存纯 UTF-8（无 BOM）
+
+手工/脚本编辑 `<DSH_HOME>/profiles/<profile>/package.json`、`cordis.patch.yml` 这类
+**DSH 启动时要读的文件**时，必须保存为**纯 UTF-8（无 BOM）**——带 BOM 的 JSON 会让
+DSH 解析失败、桌面端直接无法启动。
+
+坑在 PowerShell：Windows PowerShell 5.1（系统自带 `powershell.exe`）的
+`-Encoding UTF8` 是**带 BOM** 的；PowerShell 7+（`pwsh`）的 `utf8` 才是无 BOM。
+稳妥做法三选一：
+
+```powershell
+# 1) PS7 显式无 BOM
+Set-Content $path $text -Encoding utf8NoBOM
+# 2) .NET API（两种 PowerShell 都无 BOM）
+[System.IO.File]::WriteAllText($path, $text)
+# 3) 改完校验字节头，EF BB BF 必须不存在
+[System.IO.File]::ReadAllBytes($path)[0..2]
+```
+
+> 桌面 profile 的本地插件依赖有两种声明：`link:D:/...` 是真目录链接（改代码重启即生效，
+> 开发用这个），`file:D:/...` 是安装时复制的静态副本（改工作区代码**不会**生效，需重装）。
+> 把 `file:` 换成 `link:` 并将 `node_modules/<pkg>` 替换为 junction
+> （`New-Item -ItemType Junction -Path <node_modules里的路径> -Target <工作区>`）即可获得
+> 即时生效的开发体验。
+
 ## 数据链路
 
 ```
