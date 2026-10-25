@@ -2,6 +2,62 @@
 
 ## [Unreleased]
 
+### 左侧栏「用量与额度」全局面板（适配 DSH 桌面端 v0.2.1-rc.3）
+
+- **背景**：DSH v0.2.1-rc.3 新增左侧栏、会话视图与右侧栏的「更多」菜单，开放
+  「全局面板」席位（`sidebar.panellist` 图标行 + `main` keyed 面板本体，官方
+  `ui-plugin-manager` 的「插件」页走的就是这条路径）。本插件随之新增侧栏入口：
+  左侧栏出现「用量与额度」图标行（order 100，排在官方「插件」order 0 之后，
+  自绘半圆仪表盘 SVG、currentColor 跟随选中态），点开是 AppFrame 中栏的全宽
+  管理面板。
+- **面板内容与设置页同源**：直接复用 `SettingsPanel`（它本就是纵向流式、无定宽
+  假设），五个标签（用量统计/外观/数据源/通用/维护）与「设置 → 用量与额度」完全
+  一致，配置改一处两边同步；页壳对齐官方页几何（`height:100%` 内部滚动、内容列
+  `max-width:960px` 居中、`clamp(24px,4vw,48px)` 横向留白、darwin 顶栏避让
+  `--dsh-frame-top-clearance`）。
+- **页头悬浮窗开关**：「悬浮窗显示中/已隐藏」按钮联动 `saveWidgetEnabled`
+  （写 `opencode_quota_widget_enabled` + 广播），与设置页「通用」里的开关等效。
+- **悬浮窗联动（已移除）**：最初设计为"面板打开期间自动隐藏悬浮小窗"，实机验证两版
+  实现都有问题、且"点侧栏入口 → 悬浮窗消失"本身就违反直觉，已**整体移除**：
+  - v1（CSS `html.oq-panel-open .oq-overlay{display:none}`）：`display:none` 期间悬浮窗
+    的自适应轮播高度 effect 量到 `scrollHeight=0` 把高度写成 0px，关掉面板后没有 deps
+    变化触发重测量，塌到下一次数据轮询（最长 120s）才恢复——"悬浮窗塌掉、隔好一会儿
+    才重新弹出"（实机反馈）；
+  - v2（`panelSuppressed` 抑制位 + 专属 suppress/restore 事件）：恢复了即时性，但
+    "打开面板就藏悬浮窗"的语义仍不对——悬浮窗在左下角、面板内容居中，同屏并不冲突。
+  - 现在显隐只由用户开关决定（`LS_WIDGET`，经 `widget-toggled` 事件广播）：面板页头的
+    「悬浮窗显示中/已隐藏」与「设置 → 通用」里的开关等效，面板与悬浮窗可同屏。
+- **入口开关**：「设置 → 通用 → 侧栏入口」可关闭左侧栏「用量与额度」入口（默认显示，
+  老用户升级无感）。关闭后 `slots.inject` 的 disposer 把图标行（`sidebar.panellist`）与
+  面板（`main`）两条注册一并撤销——真实语义是回调把 `register` 的 disposer 交回
+  `ctx.effect`，销毁连带撤条目；用户正停在面板上时，宿主布局 `retainMainPanels`
+  发现 key 消失会自动切回会话视图。选择存 localStorage（`oq_sidebar_entry_enabled`），
+  经 `opencode:sidebar-entry-changed` 事件即时生效，开关态启动不注册任何条目；
+  悬浮窗与设置页不受影响。旧版 DSH 无侧栏入口，此开关无可见效果。
+- **兼容旧版 DSH**：两个席位都通过 `ctx.slots.inject()` 接线——该 API 在席位已
+  声明时同步执行回调、未声明时挂起等待（官方 `ui-renderer` 语义），插件卸载随
+  effect 自动注销。本插件 `dsh.client.inject` 保持原样（不加
+  `dsh-client-ui-sidebar`/`dsh-client-ui-layout` 依赖声明）：v0.2.1 之前的 DSH
+  没有这些席位，注入永不触发、行为与从前完全一致；在 rc.3 上无论插件与
+  ui-sidebar 谁先就绪都能正确挂上（HMR 顺序无关）。
+- **id 命名**：`dsh-quota-widget/panel`——避开官方保留值（`plugins`/`schedules`，
+  侧栏的埋点分类与 Pin 硬编码依赖它们），第三方用自带命名空间的 id。
+- **开发工作流修正**：桌面 profile 对本插件的依赖由 `file:`（安装时复制静态副本，
+  改工作区代码不生效）改为 `link:` 并将 `node_modules/dsh-quota-widget` 替换为指向
+  工作区的 junction——此后改代码重启桌面端即生效，与 `dsh-providers-hub` 同体验。
+  顺带记录：编辑 profile 的 `package.json`/`cordis.patch.yml` 必须存**纯 UTF-8（无 BOM）**，
+  Windows PowerShell 5.1 的 `-Encoding UTF8` 带 BOM 会让 DSH 无法启动（见
+  `docs/DEVELOPMENT.md`）。
+- 测试：新增 `test/sidebar-panel.test.mjs` 8 条（席位未声明挂起不注册、声明后
+  注册且 `main.key === panellist.id` 配对、延迟声明同样生效、图标契约
+  `{size,active}` 渲染 svg、页面组件完整渲染含设置页五标签与开关写回、
+  悬浮窗显隐只由用户开关决定且历史联动事件无效果、侧栏入口开关默认开/
+  关闭撤销两条注册/重开恢复、关闭态启动不注册），并抽出共享桩
+  `test/react-stub.mjs`（含 `keepEffects` 模式供事件时序测试保留监听器）。
+  当前全绿：**client 13/13、settings-render 24/24、sidebar-panel 8/8**
+  （host 62 条需要 Node ≥ 22.5 的 `node:sqlite`，本机 Node 20 无法运行，
+  本次未改动 host 侧）。
+
 ## [0.1.1] - 2026-10-24
 
 > 首次给仓库打 tag（`v0.1.1`）。0.1.0 之后的所有改动都收在这个版本里；

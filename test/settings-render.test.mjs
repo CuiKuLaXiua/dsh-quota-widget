@@ -353,9 +353,10 @@ test("设置页渲染冒烟：五个标签分类正确，互不串项", async ()
   const data = await tabText("数据源");
   assert.ok(data.includes("全部测试"), "「数据源」应有全部测试按钮");
   assert.ok(data.includes("Opencode"), "「数据源」应有 Opencode 源");
-  // 通用：刷新周期 + 用量统计外观
+  // 通用：刷新周期 + 侧栏入口开关 + 用量统计外观
   const gen = await tabText("通用");
   assert.ok(gen.includes("自动刷新"), "「通用」应有自动刷新");
+  assert.ok(gen.includes("侧栏入口"), "「通用」应有侧栏入口开关");
   assert.ok(gen.includes("预设"), "「通用」应有用量统计外观预设");
   // 维护：配置重置 + 账本类操作
   const maint = await tabText("维护");
