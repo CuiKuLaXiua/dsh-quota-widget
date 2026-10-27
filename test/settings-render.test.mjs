@@ -450,6 +450,76 @@ test("设置页渲染冒烟：拉取失败时显示错误文案而不是崩溃",
   assert.ok(collectText(tree).length > 0, "失败态也要渲染出界面");
 });
 
+// ===== 自定义区间 + 逐日明细表 =====
+
+test("设置页渲染冒烟：区间 pills 末尾有「自定义」，选中后出现起止日期控件", async () => {
+  const { panel, reset } = await setup({
+    localStorageSeed: {
+      opencode_quota_range: "custom",
+      oq_custom_range: JSON.stringify({ from: "2026-10-01", to: "2026-10-07" }),
+    },
+    fetchPayload: (range) => {
+      const p = payload(range);
+      p.range = "custom";
+      p.window = { from: "2026-10-01", to: "2026-10-07", days: 7, clipped: false, reason: "" };
+      return p;
+    },
+  });
+  const tree = await renderTwice(panel, reset);
+  const text = flatText(tree);
+
+  // 1) 区间 pills 里必须有「自定义」入口（否则用户永远切不到 custom）
+  assert.ok(findByText(tree, "自定义").length >= 1, "范围 pills 应有「自定义」");
+  // 2) 选中 custom 后出现两个 date input（起 / 止）
+  const dateInputs = findInput(tree, (p) => p.type === "date");
+  assert.equal(dateInputs.length, 2, "应有起止两个日期控件，实际 " + dateInputs.length);
+  assert.equal(dateInputs[0].props.value, "2026-10-01", "起始日期应回填偏好里的值");
+  assert.equal(dateInputs[1].props.value, "2026-10-07", "结束日期应回填偏好里的值");
+  // 3) 标题要如实显示区间与天数（host 回传的 window）
+  assert.ok(text.includes("2026-10-01") && text.includes("2026-10-07"), "标题应显示实际区间");
+  assert.ok(text.includes("7 天"), "标题应显示天数");
+});
+
+test("设置页渲染冒烟：逐日明细表默认展开，含表头/数据行/合计行", async () => {
+  const { panel, reset } = await setup({ localStorageSeed: { opencode_quota_range: "30d" } });
+  const tree = await renderTwice(panel, reset);
+  const text = flatText(tree);
+
+  // ⚠️ 默认**展开**（用户实测反馈"我没看到逐日明细"，收起态太隐蔽）：
+  // 这里锁住"打开用量统计 Tab 就能直接看到表格"，防止再被改回收起。
+  assert.ok(text.includes("逐日明细"), "图表卡下应有「逐日明细」区块");
+  assert.ok(text.includes("合计"), "默认展开时应有合计行");
+  for (const kw of ["日期", "总量", "回复", "新输入", "缓存读", "输出", "项目", "耗时"]) {
+    assert.ok(text.includes(kw), "明细表头缺少「" + kw + "」");
+  }
+  // 日期列显示 MM-DD（省宽度）
+  assert.ok(text.includes(dayKey(0).slice(5)), "明细表应列出今天这一行");
+  // 合计行取 totals（不是把行加起来），payload 给的是 20000 → fmtTokens 输出 "20.0K"。
+  // 断言写死这一种形态：三行 daily 的总和是 8.8K+… ≠ 20000，能区分"取 totals"与"行求和"。
+  assert.ok(text.includes("20.0K"), "合计行应显示 totals.total 的格式化结果 20.0K，实际文本里没有");
+});
+
+test("设置页渲染冒烟：被裁剪的区间要明确提示，不能假装查了全段", async () => {
+  const { panel, reset } = await setup({
+    localStorageSeed: {
+      opencode_quota_range: "custom",
+      oq_custom_range: JSON.stringify({ from: "2020-01-01", to: "2026-10-27" }),
+    },
+    fetchPayload: (range) => {
+      const p = payload(range);
+      p.range = "custom";
+      // host 裁剪后只给近 90 天
+      p.window = { from: "2026-07-30", to: "2026-10-27", days: 90, clipped: true, reason: "from-clamped" };
+      return p;
+    },
+  });
+  const tree = await renderTwice(panel, reset);
+  // 明细表默认展开，提示直接可见（不需要先点开）
+  const text = flatText(tree);
+  assert.ok(text.includes("已裁剪"), "被裁剪时必须明确提示，否则用户以为查了 2020 年");
+  assert.ok(text.includes("2026-07-30"), "提示里应给出实际生效的起点");
+});
+
 // ===== 清空用量账本：独立卡片 / 预览 / 输入确认 / 快照 =====
 
 /** 找到文本等于 label 的可点击元素 */

@@ -27,6 +27,16 @@ function resetUsage() {
   T.usage.perDay.clear();
   T.usage.perModel.clear();
   T.usage.records.length = 0;
+  // 自定义区间 / 单日详情用例会写这几个维度容器；不在这里一并清掉会污染后续用例
+  // （实测：dayDetail 用例留下 perProjectDay 的 proj-a，把"工具/项目/渠道"用例的 demo 挤掉）。
+  T.usage.perProjectDay.clear();
+  T.usage.perToolDay.clear();
+  T.usage.perProviderDay.clear();
+  T.usage.perHourDay.clear();
+  T.usage.perSessionDay.clear();
+  T.usage.perRelDay.clear();
+  T.usage.perRetryDay.clear();
+  T.usage.perDayDur.clear();
 }
 
 test("dayKeyOf：本地日补零口径", () => {
@@ -408,6 +418,203 @@ test("rangeSpec：区间 → 当前/上期窗口天数（90d 无上期，all 不
   assert.deepEqual(T.rangeSpec("all"), { cur: 0, prev: 0 });
   assert.deepEqual(T.rangeSpec("垃圾值"), { cur: 0, prev: 0 });
   assert.ok(T.RANGE_VALUES.includes("90d"), "白名单应包含 90d");
+});
+
+// ===== 自定义区间（resolveCustomWindow）：服务端裁剪是唯一的真相来源 =====
+// ⚠️ 所有涉及"可查下限"的用例都必须显式把 reset_at 置 0：__resetAt 是模块级状态，
+// 前面某个用例（如 enrichDimensions 的 reset_at 回归）一旦把它抬到现在，这里的
+// from 就会被抬到 reset_at 所在日、断言全错。用例内部自洽，不依赖执行顺序。
+test("resolveCustomWindow：正常闭区间，days 含首尾", () => {
+  T.setResetAtForTesting(0);
+  const now = new Date(2026, 9, 27, 12).getTime();  // 本地 2026-10-27
+  const w = T.resolveCustomWindow("2026-10-01", "2026-10-07", now);
+  assert.equal(w.ok, true);
+  assert.equal(w.from, "2026-10-01");
+  assert.equal(w.to, "2026-10-07");
+  assert.equal(w.days, 7, "10-01 到 10-07 是 7 天（含首尾）");
+  assert.equal(w.clipped, false);
+});
+
+test("resolveCustomWindow：起止写反自动交换（不算错误）", () => {
+  T.setResetAtForTesting(0);
+  // 交换属于"用户输入方向错"，不是范围越界；clipped 仍为 true 以便界面提示
+
+  const now = new Date(2026, 9, 27, 12).getTime();
+  const w = T.resolveCustomWindow("2026-10-07", "2026-10-01", now);
+  assert.equal(w.ok, true);
+  assert.equal(w.from, "2026-10-01");
+  assert.equal(w.to, "2026-10-07");
+  assert.equal(w.clipped, true);
+  assert.ok(w.reason.includes("swapped"));
+});
+
+test("resolveCustomWindow：止日期超过今天 → 收到今天（不放未来日进来拉低日均）", () => {
+  T.setResetAtForTesting(0);
+  const now = new Date(2026, 9, 27, 12).getTime();
+  const w = T.resolveCustomWindow("2026-10-20", "2026-12-31", now);
+  assert.equal(w.ok, true);
+  assert.equal(w.to, "2026-10-27");
+  assert.equal(w.clipped, true);
+  assert.ok(w.reason.includes("to-clamped"));
+});
+
+test("resolveCustomWindow：起日期早于 90 天保留窗口 → 抬到最早可查日", () => {
+  T.setResetAtForTesting(0);
+  const now = new Date(2026, 9, 27, 12).getTime();
+  const w = T.resolveCustomWindow("2020-01-01", "2026-10-27", now);
+  assert.equal(w.ok, true);
+  assert.equal(w.clipped, true);
+  assert.ok(w.reason.includes("from-clamped"));
+  assert.ok(w.from > "2020-01-01", "必须被抬到保留窗口起点，实际 " + w.from);
+  assert.ok(w.days <= 90, "裁剪后不能超过 90 天，实际 " + w.days);
+});
+
+test("resolveCustomWindow：reset_at 之后才算可查（清空账本后更早的日子不可选）", () => {
+  const now = new Date(2026, 9, 27, 12).getTime();
+  const resetAt = new Date(2026, 9, 20, 8).getTime();   // 10-20 清空过账本
+  T.setResetAtForTesting(resetAt);
+  try {
+    const w = T.resolveCustomWindow("2026-10-01", "2026-10-27", now);
+    assert.equal(w.ok, true);
+    assert.equal(w.from, "2026-10-20", "可查下限不得早于 reset_at 所在日");
+    assert.ok(w.reason.includes("from-clamped"));
+  } finally {
+    T.setResetAtForTesting(0);
+  }
+});
+
+test("resolveCustomWindow：非法格式/不存在的日期一律拒绝，不静默回落", () => {
+  const now = new Date(2026, 9, 27, 12).getTime();
+  for (const [f, t] of [["", ""], ["2026-13-01", "2026-10-01"], ["2026-02-31", "2026-10-01"], ["abc", "2026-10-01"]]) {
+    const w = T.resolveCustomWindow(f, t, now);
+    assert.equal(w.ok, false, f + " ~ " + t + " 应被拒绝");
+    assert.equal(w.error, "bad-range");
+  }
+});
+
+test("parseLocalDay / localDayKey：按本地时区解析，不做 UTC 偏移", () => {
+  const ms = T.parseLocalDay("2026-10-27");
+  const d = new Date(ms);
+  assert.equal(d.getFullYear(), 2026);
+  assert.equal(d.getMonth(), 9);
+  assert.equal(d.getDate(), 27);
+  assert.equal(d.getHours(), 0, "必须是本地 0 点");
+  assert.equal(T.localDayKey(ms), "2026-10-27", "往返应一致");
+  assert.ok(isNaN(T.parseLocalDay("2026-2-3")), "只接受补零格式");
+});
+
+// ===== computeUsage 的 custom 分支 =====
+test("computeUsage(custom)：只算闭区间内的天，上期取同长度紧邻前一段", () => {
+  resetUsage();
+  // 用相对"今天"的真实日历键，避免硬编码日期变成时间炸弹
+  const today = dayKeyAt(0);
+  const d0 = dayKeyAt(0), d1 = dayKeyAt(1), d2 = dayKeyAt(2), d3 = dayKeyAt(3), d4 = dayKeyAt(4);
+  // 本期 = 今天+昨天（2 天）；上期 = 前天+大前天（同长度）
+  T.usage.perDay.set(d0, Object.assign(T.emptyAgg(), { requests: 1, input: 100, output: 10, cacheRead: 0, total: 110 }));
+  T.usage.perDay.set(d1, Object.assign(T.emptyAgg(), { requests: 1, input: 200, output: 20, cacheRead: 0, total: 220 }));
+  T.usage.perDay.set(d2, Object.assign(T.emptyAgg(), { requests: 1, input: 500, output: 5, cacheRead: 0, total: 505 }));
+  T.usage.perDay.set(d3, Object.assign(T.emptyAgg(), { requests: 1, input: 600, output: 6, cacheRead: 0, total: 606 }));
+  T.usage.perDay.set(d4, Object.assign(T.emptyAgg(), { requests: 9, input: 9999, output: 999, cacheRead: 0, total: 10998 }));
+
+  const win = T.resolveCustomWindow(d1, d0);   // 昨天 ~ 今天（days=2）
+  assert.equal(win.ok, true);
+  const s = T.computeUsage("custom", { win });
+  assert.equal(s.daily.length, 2, "只应包含昨天与今天");
+  assert.equal(s.totals.total, 330, "100+10 + 200+20");
+  assert.ok(s.prevTotals, "同长度前一段有数据时必须给 prevTotals");
+  assert.equal(s.prevTotals.total, 505 + 606, "上期 = 前天 + 大前天");
+  assert.equal(s.window.from, d1);
+  assert.equal(s.window.to, d0);
+  assert.equal(s.window.days, 2);
+  assert.equal(s.window.clipped, false);
+  resetUsage();
+});
+
+test("computeUsage(custom)：区间外的天不进读取（含只有更早数据的情况）", () => {
+  resetUsage();
+  const d5 = dayKeyAt(5);
+  T.usage.perDay.set(d5, Object.assign(T.emptyAgg(), { requests: 3, input: 300, output: 30, total: 330 }));
+  const win = T.resolveCustomWindow(dayKeyAt(1), dayKeyAt(0));
+  const s = T.computeUsage("custom", { win });
+  assert.equal(s.totals.total, 0, "窗口内没有数据就必须是 0，不能把窗口外的算进来");
+  assert.equal(s.daily.length, 0);
+  resetUsage();
+});
+
+test("computeUsage(custom)：daily[] 带 topProject 与 avgMs（明细表的扩展列）", () => {
+  resetUsage();
+  const d0 = dayKeyAt(0);
+  T.usage.perDay.set(d0, Object.assign(T.emptyAgg(), { requests: 2, input: 100, output: 10, total: 110 }));
+  // 两个项目：big 的总量更大，应成为 topProject
+  T.usage.perProjectDay.set("small", new Map([[d0, Object.assign(T.emptyAgg(), { requests: 1, input: 10, output: 1 })]]));
+  T.usage.perProjectDay.set("big", new Map([[d0, Object.assign(T.emptyAgg(), { requests: 1, input: 100, output: 10 })]]));
+  T.usage.perDayDur.set(d0, { ms: 6000, n: 3 });   // 平均 2000ms
+  const s = T.computeUsage("custom", { win: T.resolveCustomWindow(d0, d0) });
+  assert.equal(s.daily[0].topProject, "big");
+  assert.equal(s.daily[0].avgMs, 2000);
+  assert.ok(s.daily[0].topProjectTotal > 0);
+  resetUsage();
+});
+
+// ===== 单日详情（/api/token-meter/day 的纯函数部分）=====
+test("dayDetail：非法日期与未来日期一律拒绝", () => {
+  assert.equal(T.dayDetail("").ok, false);
+  assert.equal(T.dayDetail("2026-13-01").ok, false);
+  assert.equal(T.dayDetail("abc").ok, false);
+  const future = T.localDayKey(Date.now() + 7 * DAY);
+  const r = T.dayDetail(future);
+  assert.equal(r.ok, false);
+  assert.equal(r.error, "future-date");
+});
+
+test("dayDetail：超出 90 天保留窗口拒绝，reset_at 之后才算可查", () => {
+  const old = T.localDayKey(Date.now() - 200 * DAY);
+  const r = T.dayDetail(old);
+  assert.equal(r.ok, false);
+  assert.equal(r.error, "out-of-retention");
+});
+
+test("dayDetail：返回 24 小时分布、当日构成与可靠性切片", () => {
+  resetUsage();
+  const d0 = dayKeyAt(0);
+  T.usage.perDay.set(d0, Object.assign(T.emptyAgg(), { requests: 2, input: 100, output: 10, cacheRead: 50, tools: 3, turns: 1, steps: 2 }));
+  T.usage.perHourDay.set(d0, new Map([[9, Object.assign(T.emptyAgg(), { requests: 1, input: 60, output: 6 })], [17, Object.assign(T.emptyAgg(), { requests: 1, input: 40, output: 4 })]]));
+  T.usage.perModel.set("m-x", new Map([[d0, Object.assign(T.emptyAgg(), { requests: 2, input: 100, output: 10, cacheRead: 50 })]]));
+  T.usage.perToolDay.set("read", new Map([[d0, { calls: 4, ms: 400 }]]));
+  T.usage.perProjectDay.set("proj-a", new Map([[d0, Object.assign(T.emptyAgg(), { requests: 2, input: 100, output: 10, cacheRead: 50 })]]));
+  T.usage.perRelDay.set(d0, { retries: 1, compactions: 0, compactedTokens: 0, errors: 0, toolErrors: 0 });
+  T.usage.perDayDur.set(d0, { ms: 5000, n: 2 });
+
+  const r = T.dayDetail(d0);
+  assert.equal(r.ok, true);
+  assert.equal(r.date, d0);
+  assert.equal(r.hours.length, 24, "必须是完整 24 列");
+  assert.equal(r.hours[9], 66, "9 点 = 60+6");
+  assert.equal(r.hours[17], 44, "17 点 = 40+4");
+  assert.equal(r.hoursTotal, 110);
+  assert.equal(r.totals.total, 160, "100+50+10");
+  assert.equal(r.totals.freshInput, 100);
+  assert.equal(r.totals.cacheRead, 50);
+  assert.equal(r.totals.cacheHitRate, 33.3);
+  assert.equal(r.avgMs, 2500);
+  assert.equal(r.models[0].model, "m-x");
+  assert.equal(r.projects[0].project, "proj-a");
+  assert.equal(r.tools[0].tool, "read");
+  assert.equal(r.tools[0].avgMs, 100);
+  assert.equal(r.reliability.retries, 1);
+  resetUsage();
+});
+
+test("dayDetail：空日返回全 0 而不是报错（界面要能显示'当天无数据'）", () => {
+  resetUsage();
+  const d0 = dayKeyAt(0);
+  const r = T.dayDetail(d0);
+  assert.equal(r.ok, true);
+  assert.equal(r.totals.total, 0);
+  assert.equal(r.hoursTotal, 0);
+  assert.deepEqual(r.models, []);
+  assert.equal(r.avgMs, null, "没有样本时给 null，不能给 0");
+  resetUsage();
 });
 
 test("cacheHitRate：无输入返回 null，其余按 cacheRead/(输入+缓存读) 取一位小数", () => {
@@ -1399,5 +1606,73 @@ test("importMissing：没有库时如实报错", async () => {
   assert.equal(pv.error, "store-unavailable");
   const r = await T.importMissingSessions(quiet);
   assert.equal(r.ok, false);
+});
+
+// ===== "正在对话"信号（live.lastActiveAt / live.activeSteps）=====
+// 背景（用户可见）：悬浮窗右上角的 Live 要等十几秒才亮。
+// 旧判据依赖 tokPerSec>0，而它的分母 llmMs 只在 step/end 累加 —— 首条回复跑完前恒为 0。
+// 现在 host 额外下发两个字段，客户端据此立刻判活，这里锁住 host 侧的产出。
+
+test("live.lastActiveAt：任意实时事件都刷新（step/start 就够，不必等 assistant/message）", () => {
+  T.resetUsage();
+  const live = T.usage.live;
+  assert.equal(live.lastActiveAt || 0, 0, "初始为 0");
+  const sid = "sess-live-hb";
+  const before = Date.now();
+  T.ingestEvent(sid, { type: "step/start", seq: 1, time: before, data: { turn: 1, step: 0 } });
+  assert.ok(live.lastActiveAt >= before, "step/start 必须刷新心跳，实际 " + live.lastActiveAt);
+  const t1 = live.lastActiveAt;
+  T.ingestEvent(sid, { type: "turn/start", seq: 2, time: before + 1, data: { turn: 1 } });
+  assert.ok(live.lastActiveAt >= t1, "后续任何类型事件同样刷新");
+  T.resetUsage();
+});
+
+test("live.lastActiveAt：回填路径（live:false）不得刷新心跳", () => {
+  T.resetUsage();
+  const live = T.usage.live;
+  live.lastActiveAt = 0;
+  T.ingestEvent("sess-backfill-hb", { type: "step/start", seq: 1, time: Date.now() - 10 * DAY, data: { turn: 1, step: 0 } }, { live: false });
+  assert.equal(live.lastActiveAt || 0, 0, "回填历史不能被算成'正在对话'");
+  T.resetUsage();
+});
+
+test("live.activeSteps：step/start 起、step/end 落，能反映'回复正在跑'", () => {
+  T.resetUsage();
+  const sid = "sess-active";
+  const now = Date.now();
+  const payload = () => T.computeUsage("1d").live;
+  assert.equal(payload().activeSteps, 0, "无 step 时为 0");
+  T.ingestEvent(sid, { type: "step/start", seq: 1, time: now, data: { turn: 1, step: 0 } });
+  assert.equal(payload().activeSteps, 1, "step 未结束必须为 1（客户端据此立刻亮 Live）");
+  T.ingestEvent(sid, { type: "step/end", seq: 2, time: now + 1000, data: { turn: 1, step: 0 } });
+  assert.equal(payload().activeSteps, 0, "step 结束后归零");
+  T.resetUsage();
+});
+
+test("step/start 必须递增 usage.version（否则客户端判定'数据没变'而跳过重渲染）", () => {
+  T.resetUsage();
+  const sid = "sess-ver";
+  const now = Date.now();
+  const v0 = T.usage.version;
+  T.ingestEvent(sid, { type: "step/start", seq: 1, time: now, data: { turn: 1, step: 0 } });
+  assert.ok(T.usage.version > v0, "旧实现这里直接 return，version 不动，客户端收不到'开始回复'的信号");
+  T.resetUsage();
+});
+
+test("payload.live 必须带 activeSteps / lastActiveAt / liveSince 三个字段", () => {
+  T.resetUsage();
+  const live = T.computeUsage("1d").live;
+  assert.equal(typeof live.activeSteps, "number");
+  assert.equal(typeof live.lastActiveAt, "number");
+  assert.equal(typeof live.liveSince, "number");
+  assert.ok(live.liveSince > 0, "liveSince 应是本次进程启动时刻");
+  T.resetUsage();
+});
+
+test("resetUsage 清空账本时也要把 lastActiveAt 归零（否则界面 Live 亮着但计数全 0）", () => {
+  T.usage.live.lastActiveAt = Date.now();
+  T.resetUsage();
+  assert.equal(T.usage.live.lastActiveAt, 0);
+  assert.equal(T.usage.live.stepStart.size, 0);
 });
 

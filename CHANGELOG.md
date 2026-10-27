@@ -2,6 +2,95 @@
 
 ## [Unreleased]
 
+### 自定义区间 + 逐日明细表 + 单日下钻（2026-10-27，用户反馈驱动）
+
+> 起因：用户在实机上反馈「缺少可选日期范围内的使用详情统计」，并且第一版实现上线后
+> 反馈「我没看到呢」——两次都是同一类问题的两面：**功能做了，但入口在某些状态下不可见**。
+
+#### Added
+
+- **自定义区间**：范围 pills 新增「自定义」，可选任意起止日期（本地日、闭区间，最多近 90 天）。
+  偏好存 `localStorage["oq_custom_range"]`，与固定档位（`opencode_quota_range`）分开存放。
+  - `GET /api/token-meter?range=custom&from=YYYY-MM-DD&to=YYYY-MM-DD`
+  - 非法格式回 **400**（`bad-range`），不静默回落——静默回落会让用户以为"选了但没生效"
+- **服务端裁剪是唯一真相来源**（`resolveCustomWindow`）：客户端不做日期运算，只负责展示。
+  - 起止写反 → 自动交换，`reason: "swapped"`
+  - 止 > 今天 → 收到今天，`reason` 含 `to-clamped`
+  - 起 < `max(今天-90d, reset_at 所在日)` → 抬到最早可查日，`reason` 含 `from-clamped`
+  - 裁剪结果随 payload 的 `window: {from,to,days,clipped,reason}` 回传，并**回写日期控件**，
+    用户看到的就是真正查的那一段
+- **逐日明细表**（图表卡下方，**默认展开**）：日期 / 总量 / 回复 / 新输入 / 缓存读 / 输出 /
+  项目 / 耗时，表头点击排序（日期升序，其它列首次点降序），底部合计行。
+  - 合计行取 `totals` 而非 `sum(rows)`：窗口内可能有"只有工具调用、没有回复"的天，
+    两者会不一致（与 `daily` 只统计 `assistant/message` 的口径差异同源）
+  - 被裁剪时在表格上方显示橙色「已裁剪为实际可查范围 X ~ Y」
+- **`daily[]` 新增两列**（明细表的扩展列）：
+  - `topProject` / `topProjectTotal`：当日 token 最多的项目
+  - `avgMs`：当日 `step/start → assistant/message` 的墙钟均值，**无样本给 `null` 而不是 0**
+    （给 0 会让界面显示"0ms"，与"没有测量"无法区分）。新增 `usage.perDayDur`，
+    `hydrateFromDb` 用 `SUM(ms)/COUNT(*) ... GROUP BY day` 按天重建
+- **单日下钻 `GET /api/token-meter/day?date=YYYY-MM-DD`**（只读，不需要 nonce）：
+  返回 24 小时分布、当日汇总 + 命中率 + 平均响应、模型/项目/渠道/工具构成、会话 Top10、
+  当日调用（最多 100 条，查 `events` 走已有的 `idx_events_day`）、单日可靠性切片。
+  - 明细表点某行 = 热力图点某天 = 同一套 `renderDayDetail`（此前热力图的"当日摘要"
+    是另写的，只有总量 + 模型 Top3，两处口径不一致）
+  - 空日返回全 0 **而不是报错**（界面要能显示"当天无数据"）
+  - 非法/未来/超出保留窗口分别回 `bad-date` / `future-date` / `out-of-retention`
+
+#### Fixed
+
+- **「自定义」入口在热力图/时段模式下完全消失**（用户实测反馈"我没看到"）：
+  旧实现是
+  ```
+  (isHeat||isHour) ? <span>范围：近 90 天（图表固定）</span> : pillGroup(...)
+  ```
+  为了让旧的"图表固定 90 天"提示保留，把整组 pills 连带新加的「自定义」一起藏掉了。
+  现在任何图表形态下都渲染 pills，热力/时段时改为**只读态**（`pillGroup` 支持 `save=null`：
+  照常显示与高亮，但 `disabled`、点击无效）并补一句说明。
+  **教训：往既有条件分支里加新入口前，先确认那个分支不会被整体替换掉。**
+- **custom 被图表形态吞掉**：`effMeterRange()` 里 `if(cht==="heat") return "90d"` 排在最前，
+  无条件把 custom 压成 90d，导致"控件选了 10-01~10-07、明细表却是 90 天"。
+  现在 **custom 优先级最高**、不受图表形态影响；热力/时段图在 custom 下只显示区间内的天
+  （区间外的格子为空），语义上"选了 7 天就不该偷塞 90 天数据进图里"。
+- **标题与说明文案自相矛盾**：`rangeLabelTxt()` 的 custom 分支原来排在 heat/hour 之后，
+  永远走不到；`chartHint()` 同样。两处都把 custom 判断提到最前，并给 heat/hour 单独文案。
+- **逐日明细表默认收起导致"以为没做"**：`detailOpen` 初值 `false` → **`true`**。
+  收起态只有一行灰字，用户实测完全没注意到；表格本身很轻（一天一行），展开不影响首屏观感。
+
+#### 设计约束（后续改动请遵守）
+
+- **悬浮窗不参与自定义区间**：260px 宽的展示区放不下日期控件，且"配置类交互只在设置侧"
+  是既有约束（CHANGELOG 里两次记录过同类教训）。悬浮窗维持 `1d/7d/30d/90d/all` 五档，
+  `RANGE_KEYS` 里的 `custom` 只对设置页/全局面板生效。
+- **热力图/时段图的数据源语义**：固定档位下仍固定取近 90 天（月份回看、时段样本量需要）；
+  只有在 custom 时跟随用户区间。这两条不冲突，但**不能反过来**把固定档也压成区间。
+- **日期只认 `YYYY-MM-DD` 补零格式**：`parseLocalDay` 用正则 + 反向校验，`2026-02-31`
+  会被拒绝（`Date` 会静默归一化成 `03-03`，不校验就会让用户"选了 2 月 31 日"）。
+
+#### Tests
+
+- host 72 → **86**（区间裁剪四条路径、非法格式、`parseLocalDay` 往返、custom 窗口与上期、
+  `topProject`/`avgMs`、`dayDetail` 的正常/非法/未来/超期/空日）
+- client 19 → **25**（`RANGE_KEYS` 含 custom、`rangeQuery` 拼装、`loadCustomRange` 的
+  默认与损坏回落、`detailVal` 的新输入 = `prompt - cache_read`、`DETAIL_COLS` 完整性）
+- settings-render 24 → **27**（自定义 pills 与日期控件回填、明细表**默认展开**含合计行、
+  裁剪提示可见）
+- 当前全绿：**148/148**
+- 端到端（真实账本副本 + 自建 http server，见 `docs/DEVELOPMENT.md`）**23/23**：
+  实测 `window.days=7`、`topProject=autofamer`、`avgMs=8340`、超范围裁剪到 90 天、
+  非法日期 400、`/day` 的分时合计与当日总量完全相等（42082006 = 42082006，无丢数据）
+
+#### 测试夹具教训
+
+- `test/host.test.mjs` 的 `resetUsage()` 只清 `perDay/perModel/records`。新增的
+  `perProjectDay` / `perToolDay` / `perHourDay` / `perSessionDay` / `perRelDay` /
+  `perRetryDay` / `perDayDur` 不会自动清，**新用例写入这些容器会污染后续用例**
+  （实测 `dayDetail` 用例留下的 `proj-a` 把"工具/项目/渠道"用例的 `demo` 挤掉）。
+  已把 9 个容器全部纳入 `resetUsage()`。
+- `__resetAt` 是模块级状态：`enrichDimensions` 的 `reset_at` 回归用例会把它抬到"现在"，
+  之后任何依赖"最早可查日"的用例都会算错。涉及可查下限的用例必须**显式
+  `T.setResetAtForTesting(0)`**，不依赖执行顺序。
+
 ### 左侧栏「用量与额度」全局面板（适配 DSH 桌面端 v0.2.1-rc.3）
 
 - **背景**：DSH v0.2.1-rc.3 新增左侧栏、会话视图与右侧栏的「更多」菜单，开放

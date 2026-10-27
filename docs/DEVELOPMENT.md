@@ -173,6 +173,73 @@ GET /api/token-meter?range=1d|7d|30d|90d|all[&withChart=1]  → computeUsage() �
 - **范围**（1d/7d/30d/90d/all）由设置页与悬浮窗**共用** `LS_RANGE`，变更时广播
   `opencode:range-changed`，两边都监听（此前设置页另存 `oq_settings_range`，两个界面
   会显示不同时间段）。
+- **自定义区间只在设置页**：`RANGE_KEYS` 里的 `custom` 只对设置页/全局面板生效，起止存
+  `LS_CUSTOM_RANGE`（`oq_custom_range`，`{from,to}` 两个 `YYYY-MM-DD`）。悬浮窗维持五档，
+  原因同下一条。
+
+## 自定义区间（custom）
+
+### 服务端裁剪是唯一真相来源
+
+客户端**不做任何日期运算**，只把用户选的起止拼进查询串（`rangeQuery()`），
+裁剪全部由 `resolveCustomWindow(from, to, now)` 在 host 侧完成，并把结果随 payload 的
+`window: {from, to, days, clipped, reason}` 回传；客户端把它**回写日期控件**，
+用户看到的就是真正查的那一段。
+
+| 情况 | 处理 | `reason` |
+|---|---|---|
+| `from > to` | 自动交换 | `swapped` |
+| `to > 今天` | 收到今天 | 含 `to-clamped` |
+| `from < max(今天-90d, reset_at 所在日)` | 抬到最早可查日 | 含 `from-clamped` |
+| 非法格式 / 不存在的日期 | **400 `bad-range`** | — |
+
+不静默回落是刻意的：回落会让用户以为"选了但没生效"。
+`parseLocalDay()` 必须做正则 + 反向校验（`new Date("2026-02-31")` 会静默归一化成 `03-03`）。
+
+### `effMeterRange()` 的优先级：custom 最高
+
+```
+custom > heat/hour 的 90d 固定 > 用户选的固定档
+```
+
+⚠️ **不要反过来**。旧实现把 `if (chart === "heat") return "90d"` 写在最前，
+无条件把 custom 压成 90d，结果"控件选了 10-01~10-07、明细表却是 90 天"。
+固定档位在热力/时段下仍取 90 天（月份回看与时段样本量需要），但 custom 是用户显式
+指定的窗口，必须贯穿总览/图表/排行/明细全部区块——热力/时段图在 custom 下只显示区间
+内的天，区间外的格子为空，这是预期语义。
+
+### 往既有条件分支加新入口时先确认分支不会整体替换
+
+第一版把「自定义」加进 `pillGroup("范围", ...)`，但外层是
+`(isHeat||isHour) ? <span>范围：近 90 天（图表固定）</span> : pillGroup(...)`——
+热力/时段模式下整组 pills 被替换成一句文字，**新入口跟着一起消失**（用户实测反馈"我没看到"）。
+现在任何形态都渲染 pills，热力/时段时传 `save=null` 走**只读态**（照常显示与高亮、
+按钮 `disabled`、点击无效）并补一句说明。
+
+## 逐日明细表与单日下钻
+
+- **明细表**：数据源是 payload 的 `daily[]`，默认**展开**（收起态太隐蔽，用户反馈过）。
+  列定义抽在模块级 `DETAIL_COLS` + 纯函数 `detailVal()`，供渲染与单测共用。
+  - `freshInput` 必须算 `prompt - cache_read`（`prompt` 是"新输入 + 缓存读"的旧口径）
+  - 合计行取 `totals` 而非 `sum(rows)`：窗口内可能有"只有工具调用、没有回复"的天
+- **`daily[]` 的扩展列**：`topProject`（当日 token 最多的项目）、`avgMs`
+  （`step/start → assistant/message` 墙钟均值，**无样本给 `null` 不给 0**——给 0 界面会
+  显示"0ms"，与"没有测量"无法区分）。`avgMs` 的内存源是 `usage.perDayDur`，
+  `hydrateFromDb` 用 `SUM(ms)/COUNT(*) ... GROUP BY day` 重建。
+- **`GET /api/token-meter/day?date=YYYY-MM-DD`**（只读，不要 nonce）：24 小时分布 +
+  当日汇总 + 模型/项目/渠道/工具 + 会话 Top10 + 当日调用（最多 100 条，走 `idx_events_day`）
+  + 单日可靠性切片。**明细表点某行 = 热力图点某天 = 同一个 `renderDayDetail`**。
+  错误码：`bad-date` / `future-date` / `out-of-retention`；空日返回全 0 而不是报错。
+
+### 测试夹具的两个坑
+
+- `resetUsage()` 必须把所有维度容器都清掉（`perDay/perModel/perProjectDay/perToolDay/
+  perProviderDay/perHourDay/perSessionDay/perRelDay/perRetryDay/perDayDur/records`）。
+  只清 `perDay/perModel/records` 时，新用例写进去的维度会污染后续用例——实测
+  `dayDetail` 用例留下的 `proj-a` 把"工具/项目/渠道"用例的 `demo` 挤掉。
+- `__resetAt` 是模块级状态。`enrichDimensions` 的 `reset_at` 回归用例会把它抬到"现在"，
+  之后任何依赖"最早可查日"的用例都会算错。涉及可查下限的用例必须显式
+  `T.setResetAtForTesting(0)`，不依赖执行顺序。
 - **图表形态不共用**：悬浮窗迷你图只有 柱状/热力（`loadTmChart`），设置页多一个"折线"，
   放在同一个 key 会让"设置页选折线 → 悬浮窗按非 heat 即 bar 渲染"来回打架，
   因此设置页单开 `oq_settings_chart`（首次使用沿用旧的共享值）。
