@@ -271,6 +271,57 @@ GET /api/token-meter?range=1d|7d|30d|90d|all[&withChart=1]  → computeUsage() �
 这些都由单测 `贴边间距：EDGE_GAP 单一来源，CSS 不得写死 px` 断言（读常量而非硬编码 3，
 所以以后调间距测试会自动跟随，不会变成"改了就红"的假警报）。
 
+### ⚠️ `translateX` 不改命中区：卡片容器和它的父级都要关
+
+这是被用户实测打回一次的坑：只给 `.oq-card` 加 `pointer-events:none` **无效**。
+
+```
+.oq-overlay{position:fixed;width:260px;pointer-events:auto}   ← 真正的命中盒（卡片的父级）
+  └ .oq-card (translateX 出去了，但父级没动)
+```
+
+overlay 是 `position:fixed` 的容器，不随卡片位移。收起后它仍完整盖住面板原区域，
+鼠标事件照样命中它。所以必须两级都处理：
+
+```css
+.oq-overlay.oq-overlay--collapsed{ pointer-events:none !important; }        /* 父级关掉 */
+.oq-card.oq-edge:not(.oq-edge-open) .oq-edge-handle{ pointer-events:auto; }  /* 把手单独打开 */
+```
+
+`pointer-events:none` 可被子级 `auto` 覆盖回来，正好用来做"只留一个把手可点"。
+
+另外把手的**纵向**热区也要收紧：旧写法 `top:0;bottom:0` 让它撑满整张卡片（~200px），
+胶囊上下很远也会触发。现在 `top:50%` + `height:EDGE_CAPSULE_H`，命中区正好包住胶囊。
+
+⚠️ 连带约束：**悬停态不能改变胶囊高度**（原来 44→52px）。热区高度=胶囊高度，
+胶囊一变高，指针就可能落到热区外 → `mouseleave` → 收回 → 又进热区，抖成一团。
+悬停反馈只靠提亮 + 外发光。
+
+### 收起态的命中区也必须收紧
+
+`translateX` 只改变**视觉位置**，不改变**命中区域**。卡片收起后仍占据视口内 260px 的
+`pointer-events` 范围，会带来两个问题：
+
+1. 鼠标扫过整个面板宽度就触发 hover 展开（用户反馈"触发范围太大"）
+2. 卡片挡住下面的宿主界面，点不到聊天内容
+
+所以收起态必须：
+
+```css
+.oq-card.oq-edge:not(.oq-edge-open){ pointer-events:none; }
+.oq-card.oq-edge:not(.oq-edge-open) .oq-edge-handle{ pointer-events:auto; }  /* 子级覆盖回来 */
+```
+
+JS 侧对应地把 hover 监听按状态换挂载点：
+
+```js
+var cardEvents = collapsed ? {} : { onMouseEnter: edgeHoverIn, onMouseLeave: edgeHoverOut };
+// 收起态：<button class="oq-edge-handle" onMouseEnter={edgeHoverIn} ... />
+```
+
+⚠️ 反向约束：展开态**不能**有 `pointer-events:none`，否则卡片出来后点不动。
+这条由单测守着。
+
 ### 胶囊配色：调色用区间断言，别写精确值
 
 颜色被用户来回调过三次（太淡 → 太深 → 折中），所以测试断言改成**区间**而不是精确值：

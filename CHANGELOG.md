@@ -235,6 +235,58 @@ X = EDGE_GAP + CARD_BORDER_W + (CAPSULE_W + HIT_W)/2 = 3 + 1 + 15 = 19px
 
 **变异验证**：从偏移公式里去掉 `CARD_BORDER_W` → 2 条几何用例变红（已实测）。
 
+#### Fixed：hover 触发范围是整个面板宽度，不是胶囊（用户反馈）
+
+**根因**：`onMouseEnter` 绑在 `.oq-card` 上，而卡片宽 260px。收起时卡片虽然
+`translateX(±100%)` 移出视口，**但它仍然占据视口内 260px 的命中区域**——只是不可见。
+于是鼠标扫过整个面板宽度都会展开。
+
+**改法**：
+
+| 项 | 旧 | 新 |
+|---|---|---|
+| 收起态 hover 监听 | `.oq-card`（260px） | **`.oq-edge-handle`（22px 热区）** |
+| 收起态卡片 `pointer-events` | `auto` | **`none`**（否则仍挡住宿主界面，点不到下面的聊天内容） |
+| 收起态把手 `pointer-events` | 继承 | **显式 `auto`**（父级 `none` 需要子级覆盖回来） |
+| 展开态 hover 监听 | `.oq-card` | 保持 `.oq-card`（已展开，移出卡片才收回） |
+
+JS 侧把 `edgeHoverIn` / `edgeHoverOut` 抽成共用函数，按 `collapsed` 决定挂在哪：
+收起态卡身 `cardEvents = {}`，把手挂 in/out；展开态反过来。
+
+新增测试 `hover：收起态命中区只到把手，不是整个面板宽度`，断言三件事：
+收起态 `pointer-events:none`、把手 `pointer-events:auto`、展开态不能有 `none`
+（否则展开后卡片点不动）。**变异验证**：去掉 `pointer-events:none` → 用例变红（已实测）。
+
+#### Fixed：hover 范围收紧（第二轮）——上一版漏了 overlay 这个 260px 命中盒
+
+上一版只给 `.oq-card` 加了 `pointer-events:none`，用户重启实测仍然"离胶囊很远也会弹出"。
+
+**根因**：真正盖住面板原区域的是卡片的**父级** `.oq-overlay`：
+
+```css
+.oq-overlay{position:fixed;left:3px;bottom:80px;width:260px;pointer-events:auto}
+```
+
+overlay 不随卡片 `translateX` 位移，收起后它仍完整盖在原位置。鼠标事件打在 overlay 上，
+卡片设成 `none` 也没用。
+
+**另一处遗漏**：把手热区是 `top:0;bottom:0`，**纵向撑满整张卡片**（~200px），
+而胶囊只有 44px。所以胶囊上下很远也会触发。
+
+**改法**：
+
+| 项 | 旧 | 新 |
+|---|---|---|
+| overlay 命中 | 始终 `auto` | 收起态加 `.oq-overlay--collapsed{pointer-events:none}` |
+| 把手热区纵向 | `top:0;bottom:0`（≈200px） | `top:50% + height:EDGE_CAPSULE_H(44px)`，正好包住胶囊 |
+| 悬停态胶囊高度 | 44 → 52px | **保持 44px**（热区=胶囊高，变高会导致指针落到热区外→抖动） |
+
+`pointer-events:none` 的继承特性在这里正好可用：父级 overlay 设 none，把手用
+`pointer-events:auto` 覆盖回来，于是**只有把手的 22×44 区域可命中**。
+
+新增 2 条测试（overlay 必须按收起态收紧、把手纵向热区不得撑满卡片）。
+**变异验证**：把 `.oq-overlay--collapsed` 的 `pointer-events:none` 去掉 → 用例变红（已实测）。
+
 #### 关键实现约束（改动前必读）
 
 - **绝不用 `display:none` / `width:0` 实现收起**。卡片高度由 JS 量 `.oq-carousel` 的

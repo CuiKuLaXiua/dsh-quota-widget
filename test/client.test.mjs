@@ -477,9 +477,12 @@ test("动效：收起/展开的过渡只挂在 transform 上，left/bottom 不�
 
 test("把手：可触区必须大于胶囊（细视觉 + 大好点）", () => {
   const text = T.__EDGE_CSS_PROBE.join("\n");
-  const handle = text.match(/\.oq-edge-handle\{([^}]*)\}/);
-  assert.ok(handle, "应有 .oq-edge-handle 规则");
+  // 只匹配独立的 .oq-edge-handle{...}（行首），排除
+  // ".oq-card... .oq-edge-handle{pointer-events:auto}" 这类组合选择器
+  const handle = text.match(/(?:^|\n)\.oq-edge-handle\{([^}]*)\}/);
+  assert.ok(handle, "应有独立的 .oq-edge-handle 规则");
   const hitW = Number((handle[1].match(/width:(\d+)px/) || [])[1]);
+  assert.ok(!isNaN(hitW), "热区宽度应为具体 px，实际 " + handle[1]);
   assert.ok(hitW > T.EDGE_CAPSULE_W,
     "热区宽度(" + hitW + ") 必须大于胶囊宽度(" + T.EDGE_CAPSULE_W + ")，否则细胶囊点不到");
   assert.equal(hitW, T.EDGE_HANDLE_HIT_W, "CSS 的热区宽度应与常量一致");
@@ -620,6 +623,51 @@ test("动效：吸入时播放一次性脉动，且不影响 3px 对齐", () => 
   assert.ok(snapRule, "应有 .oq-edge-snap 规则");
   assert.ok(!snapRule[1].includes("infinite"), "吸附脉动必须只播一次");
   assert.ok(snapRule[1].includes(" 1"), "吸附脉动 animation-iteration-count 应为 1");
+});
+
+// 用户反馈"hover 触发范围能不能缩小到胶囊，而不是整个面板宽度"。
+// 根因：onMouseEnter 绑在 .oq-card（260px）上，卡片虽整体移出视口，但仍保留 260px 命中区。
+test("hover：收起态命中区只到把手，不是整个面板宽度", () => {
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+
+  // 1) 收起态卡片必须 pointer-events:none（否则 260px 全宽都会响应 hover）
+  const hidden = text.match(/\.oq-card\.oq-edge:not\(\.oq-edge-open\)\{([^}]*)\}/);
+  assert.ok(hidden, "应有收起态规则");
+  assert.ok(hidden[1].includes("pointer-events:none"),
+    "收起态卡片必须 pointer-events:none，否则整个面板宽度都会触发 hover");
+
+  // 2) 把手要显式收回 pointer-events（父级 none 需要子级 auto 才能被命中）
+  assert.ok(/\.oq-card\.oq-edge:not\(\.oq-edge-open\) \.oq-edge-handle\{[^}]*pointer-events:auto/.test(text),
+    "收起态必须给把手单独开 pointer-events:auto，否则点不到");
+
+  // 3) 展开态不能被 none 影响（否则卡片出来后依然点不动）
+  const open = text.match(/\.oq-card\.oq-edge-open\{([^}]*)\}/);
+  assert.ok(open, "应有展开态规则");
+  assert.ok(!open[1].includes("pointer-events:none"),
+    "展开态不能继承 pointer-events:none，否则展开后卡片点不动");
+});
+
+// 用户重启后实测："鼠标移到面板原本占据的区域滑动（距离胶囊较远）还是会弹出"。
+// 只关卡的 pointer-events 无效——真正的 260px 命中盒是它的父级 .oq-overlay。
+test("hover：overlay 本身也要按收起态收紧（它才是 260px 命中盒）", () => {
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+  assert.ok(/\.oq-overlay\.oq-overlay--collapsed\{[^}]*pointer-events:none/.test(text),
+    "必须有一条 .oq-overlay--collapsed{pointer-events:none} 规则，" +
+    "否则卡片收起后 overlay 仍盖住面板原区域、整片都能触发 hover");
+});
+
+test("hover：把手纵向热区不得撑满整张卡片（否则胶囊上下很远也会触发）", () => {
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+  const handle = text.match(/(?:^|\n)\.oq-edge-handle\{([^}]*)\}/);
+  assert.ok(handle, "应有独立的 .oq-edge-handle 规则");
+  const decl = handle[1];
+
+  // 旧实现 top:0;bottom:0 → 高度等于卡片高度（~200px）
+  assert.ok(!/top:0;bottom:0/.test(decl.replace(/\s/g, "")),
+    "把手不得用 top:0;bottom:0 撑满卡片高度，实际 " + decl);
+  assert.ok(decl.includes("height:" + T.EDGE_CAPSULE_H + "px"),
+    "把手热区高度应等于胶囊高度 " + T.EDGE_CAPSULE_H + "px，实际 " + decl);
+  assert.ok(decl.includes("top:50%"), "把手应纵向居中，实际 " + decl);
 });
 
 test("动效：内容淡出比位移快，且展开态内容不延迟淡入（否则先露空白）", () => {
