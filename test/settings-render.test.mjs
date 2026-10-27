@@ -450,6 +450,30 @@ test("设置页渲染冒烟：拉取失败时显示错误文案而不是崩溃",
   assert.ok(collectText(tree).length > 0, "失败态也要渲染出界面");
 });
 
+// ===== 贴边收起开关 =====
+
+test("设置页渲染冒烟：「外观」Tab 有「贴边收起」开关，默认关", async () => {
+  const { panel, reset } = await setup({ localStorageSeed: { opencode_quota_range: "30d" } });
+  let tree = await renderTwice(panel, reset);
+  const tab = findByText(tree, "外观");
+  assert.ok(tab.length >= 1, "应有「外观」标签");
+  tab[0].props.onClick();
+  reset();
+  tree = panel();
+  const text = flatText(tree);
+
+  assert.ok(text.includes("贴边收起"), "外观 Tab 应有「贴边收起」卡片");
+  // 说明文案要讲清触发时机（用户明确要求：贴边后"再往边缘拽一下"才收起）
+  assert.ok(text.includes("再往同一侧拽一下") || text.includes("边缘"), "应说明触发方式");
+  // 默认关：localStorage 里不该有 "1"
+  assert.notEqual(store_get(globalThis.localStorage, "oq_edge_collapse"), "1", "默认必须关闭");
+});
+
+/** 安全读 localStorage 值（测试桩是内存 Map 包装对象） */
+function store_get(ls, key) {
+  try { return ls.getItem(key); } catch { return null; }
+}
+
 // ===== 自定义区间 + 逐日明细表 =====
 
 test("设置页渲染冒烟：区间 pills 末尾有「自定义」，选中后出现起止日期控件", async () => {

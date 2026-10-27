@@ -177,6 +177,242 @@ GET /api/token-meter?range=1d|7d|30d|90d|all[&withChart=1]  → computeUsage() �
   `LS_CUSTOM_RANGE`（`oq_custom_range`，`{from,to}` 两个 `YYYY-MM-DD`）。悬浮窗维持五档，
   原因同下一条。
 
+## 悬浮窗贴边收起（把手条）
+
+开关：`localStorage["oq_edge_collapse"]`（默认 "0"）；收起状态：`["oq_edge_state"]`
+（`{edge:"left"|"right"}`，空 = 展开）。
+
+### 触发时机：吸附不变，再拽一下才收起
+
+```
+拖到左/右边缘松手 → 自动吸附（原有行为，未改）
+   ↓ 已贴边时继续朝同侧拖 > 18px（EDGE_PULL_TRIGGER）
+收成 14px 把手条（EDGE_HANDLE_W）
+   ↓ 悬停 / 点击把手
+展开（悬停移开 420ms 后自动收回；点击则锁定）
+```
+
+这是用户明确要求的交互：松手即收会在"正常拖动路过边缘"时误触发；"再拽一下"像按钮咔哒，
+意图明确。判定条件是**拖拽过程中当前位置已经贴着该侧边缘**（`atLeft`/`atRight`），
+不是"位置接近"，否则斜向拖拽会误吸。
+
+### 三个踩过的真缺陷（"拽一下没反应"的直接原因）
+
+1. **`armAt` 每帧重置**：若在每个 `mousemove` 里写 `armAt = 当前鼠标 x`，
+   则 `pushed = armAt - x` 恒为 0，阈值永远达不到。必须**只在刚进入贴边的那一帧**
+   记录锚点（按侧别变化判定），判定逻辑抽在纯函数 `edgePullVerdict()` 里，有变异测试守着。
+2. **`oq-edge-open` 与 `oq-edge-{side}` 无条件并存**：两者都写 `transform`、
+   特异性相同，`oq-edge-open{transform:none}` 写在前面 → 收起态被永久拉回原位，
+   CSS 层面完全看不出问题，表现为"开关开了、也拽了、卡片不动"。
+   由 `edgeCardClass()` 保证互斥：只有展开态才挂 `oq-edge-open`。
+3. **吸入后 `mouseenter` 立刻弹回**：鼠标还停在卡片即将推出的区域上，`mouseenter` 立即
+   `edgeOpen=true`。用 `edgeCollapseAtRef` 在吸入后 500ms 内抑制悬停展开。
+   同理，吸入后只移除 `mousemove`、**保留 `mouseup`**，否则 `onUp` 不跑、
+   `dragging.current` 永不清理。
+
+### 动效：只让 transform 动
+
+**禁止给 `left` / `bottom` 加过渡。** 一旦它们和 `transform` 都有过渡，两套动画各自计时、
+缓动不同，视觉上就是"先抖一下再滑出去"（用户反馈"动画设计很差"的直接原因）。
+现在 `collapseToEdge()` 对 left/bottom 是**瞬时写死**，动画全部交给 `transform`：
+
+| | 时长 | 缓动 | 语义 |
+|---|---|---|---|
+| 收起 | 0.42s | `cubic-bezier(0.32,0.72,0,1)` | 收束、退进抽屉 |
+| 展开 | 0.40s | `cubic-bezier(0.16,1,0.3,1)` | 前快后缓、抽屉拉出 |
+
+配套：
+- `.oq-body` 收起时 0.12s 淡出（远快于位移）→ "内容先退场、空壳再滑出"；
+  展开时 0.21s 淡入、**不加延迟**（加了会先露一片空白，像卡住）。
+- `.oq-edge` 必须 `will-change:transform`，否则每帧重绘 `backdrop-filter` 模糊层。
+- 收起态要**整条覆盖** `transition`（不含 `height`），否则位移时基类的
+  `transition:height 0.22s` 仍在跑，高度会跟着抖；展开态再把 height 加回来。
+- 这些不变量由单测直接对 CSS 文本断言（`__EDGE_CSS_PROBE`），给 `.oq-edge-left`
+  加回 `transition:left` 会让用例变红（已验证）。
+
+### 收起态的"隐形"样式必须用 :not(.oq-edge-open) 限定
+
+**这是"展开时变毛玻璃"的根因。**
+
+```css
+/* ❌ 收起态和展开态都会命中 */
+.oq-card.oq-edge{background:transparent!important;backdrop-filter:none!important}
+
+/* ✅ 只作用于真收起态 */
+.oq-card.oq-edge:not(.oq-edge-open){background:transparent!important;...}
+```
+
+把 `background:transparent` 写在共用规则上，展开时卡片就**没有背景色**，只剩基类的
+`backdrop-filter:blur(10px)` 在跑——视觉上就是"毛玻璃质感，要再点一下才恢复"
+（用户实测反馈）。共用规则里只允许 `will-change` 和 `transition`。
+
+收起态需要关掉的四类东西（缺一个就会在视口边缘留下痕迹）：
+
+| 属性 | 不关会怎样 |
+|---|---|
+| `background` / `border-color` / `box-shadow` | 深色外壳、1px 描边、投影 |
+| `backdrop-filter` | 卡片移出后仍在视口边缘留一条**模糊带** |
+| `::before` / `::after` | 材质伪元素（液体玻璃高光与渐变描边、亚克力/纸面噪点）画在四边，会残留 |
+| `overflow`（反向：要 `visible`） | 把手挂在卡片外侧（负偏移），`hidden` 会裁掉 |
+
+### EDGE_GAP 是单一来源：改它就等于改全局间距
+
+当前 `EDGE_GAP = 3`（曾为 6，用户反馈偏宽后减半）。它同时决定**四处**，任何一处
+改写成字面量都会造成"落点不一致"或"漏边"：
+
+| 用途 | 表达式 | 写错的后果 |
+|---|---|---|
+| 拖拽硬边界 | `Math.max(EDGE_GAP, ...)` | 能拖到边缘外/拖不到边缘 |
+| 松手吸附 | `left = EDGE_GAP` | 吸附后离边缘距离与拖动时不同 → "弹一下" |
+| 收起位移 | `translateX(calc(-100% - ${EDGE_GAP}px))` | 少减就漏一条边 |
+| 把手外侧偏移 | `-(EDGE_GAP + (CAPSULE_W + HIT_W)/2)` | 少算胶囊半个宽度 → 胶囊偏离目标间距 1px |
+| overlay 首屏 left | `left: ${EDGE_GAP}px` | 首次打开的位置与吸附落点不一致 |
+
+这些都由单测 `贴边间距：EDGE_GAP 单一来源，CSS 不得写死 px` 断言（读常量而非硬编码 3，
+所以以后调间距测试会自动跟随，不会变成"改了就红"的假警报）。
+
+### 胶囊配色：调色用区间断言，别写精确值
+
+颜色被用户来回调过三次（太淡 → 太深 → 折中），所以测试断言改成**区间**而不是精确值：
+
+| 项 | 允许区间 | 当前 |
+|---|---|---|
+| 渐变两端 | 0.35 ~ 0.60 | 0.46 |
+| 渐变中部 | 0.65 ~ 0.85 | 0.74 |
+| 描边 | 0.30 ~ 0.50 | 0.42 |
+
+区间下界防"太淡"（第一版 0.10/0.42），上界防"太深"（第二版 0.72/0.92）。
+改配色只要落在区间内就不会误报，超出说明偏得太远。
+
+### 胶囊动效：三条不能违背的规则
+
+1. **循环动画必须改 `box-shadow`，不能只改 `opacity`。**
+   旧实现是 `opacity 0.86↔1`，幅度太小，用户反馈"看不出来"。
+   改 `box-shadow` 还有一个好处：不触发渐变重绘的中间帧，GPU 更省。
+2. **一次性反馈必须用 `box-shadow` 的 spread 扩散，不能用 `transform: scale`。**
+   缩放会让胶囊离开调好的 `EDGE_GAP` 对齐基准；spread 是从边缘向外扩，不影响布局。
+3. **循环动画只在 `:not(.oq-edge-open)` 下跑，悬停时 `paused`。**
+   展开态卡片已经出来了，不需要再提示；悬停时指针已在交互，继续呼吸反而干扰。
+
+另外两条实现细节：
+- 瞬态类由 **React state** 驱动（直接改 DOM `className` 会被下一次重渲染覆盖）。
+- 连续两次吸入要"先清再置"：同名 `animation` 在类持续存在时**不会重跑**。
+
+### 别忘了那 1px 透明 border
+
+收起态只把 `border-color` 设成 transparent，**border 宽度仍然存在**。而：
+
+- 卡片位移 `translateX(-100%)` 是按 **border box** 宽度算的
+- 把手 `position:absolute` 的包含块是卡片的 **padding box**（不含 border）
+
+两者差 1px。漏掉它，胶囊就会从 3px 变成 2px（看起来"几乎贴死"）。所以偏移公式必须带
+`CARD_BORDER_W`：
+
+```
+X = EDGE_GAP + CARD_BORDER_W + (CAPSULE_W + HIT_W)/2
+  = 3 + 1 + 15 = 19px
+```
+
+同理，反推胶囊位置时要先减 1px：`(X - CARD_BORDER_W) - (HIT_W - CAPSULE_W)/2 - CAPSULE_W`。
+
+### 把手偏移的几何推导（别凭感觉写）
+
+要让**胶囊左边缘**距视口正好 `EDGE_GAP`，偏移量不是 `HIT_W - EDGE_GAP`（那少算了
+胶囊自身宽度的一半，实测差 1px），而是：
+
+```
+偏移 = EDGE_GAP + (CAPSULE_W + HIT_W) / 2
+     = 3 + (8 + 22)/2 = 18px        → 胶囊左边缘 = 18 - 11 - 4 = 3px ✅
+```
+
+推导（左停靠，卡片收起后右边界在视口 `x=0`）：
+
+```
+把手右偏移 = X           →  把手左边界 = X - HIT_W
+把手中心  = X - HIT_W/2  →  胶囊与把手同心
+胶囊左边缘 = X - HIT_W/2 - CAPSULE_W/2 ≡ EDGE_GAP
+⇒ X = EDGE_GAP + (CAPSULE_W + HIT_W)/2
+```
+
+测试不写死 18，而是做几何自洽断言（`capLeft === EDGE_GAP`），
+所以改 `EDGE_GAP` / 胶囊宽 / 热区宽时测试会自动跟随。
+
+### 位移必须减掉 EDGE_GAP
+
+卡片收起前 `left = EDGE_GAP`（6px，为了展开时离视口边缘有呼吸）。所以：
+
+```css
+/* ❌ 右边界停在 x=6px → 就是"残留侧边" */
+.oq-card.oq-edge-left { transform: translateX(-100%) }
+
+/* ✅ 右边界精确落在 x=0 */
+.oq-card.oq-edge-left { transform: translateX(calc(-100% - 6px)) }
+```
+
+把手偏移量要同步减去 EDGE_GAP（`-(HIT_W - EDGE_GAP)`），否则把手整体被推出视口 6px、
+胶囊只剩一半。这两处必须一起改，只改一边就会出现"胶囊偏了"或"还漏一条边"。
+
+### 收起态只能有把手，不能有任何卡片外壳
+
+**这是"两层"问题的根因，改之前务必理解。**
+
+位移必须是**完整 100%**：
+
+```css
+.oq-card.oq-edge-left { transform: translateX(-100%) }   /* ✅ 外壳完全出视口 */
+.oq-card.oq-edge-left { transform: translateX(calc(-100% + 10px)) }  /* ❌ 留 10px */
+```
+
+留 N px 的做法看起来"正好露出把手"，但那 N px 里除了紫色胶囊，还有 `.oq-card` 的
+**深色背景 + 1px 描边 + 14px 圆角**——视觉上就是"深色竖条 + 紫胶囊"两层。
+
+正确做法是让外壳整体出去，把手挂在卡片**外侧**：
+
+```css
+.oq-edge-handle[data-side=left]  { right: -22px }  /* 卡片左移出去后，卡片右边界=视口左边缘 */
+.oq-edge-handle[data-side=right] { left:  -22px }
+```
+
+偏移量 = 把手热区宽度，这样 22px 热区**全部**落在视口内。再补两条防漏：
+
+- `.oq-card.oq-edge{background:transparent!important;border-color:transparent!important;box-shadow:none!important}`
+  —— 即便整体移出，合成层的 1px 抗锯齿仍可能漏在视口边缘。
+- `.oq-card.oq-edge{overflow:visible}` —— 基类是 `hidden`，会把挂在外面（负偏移）的把手裁掉。
+
+单测 `贴边收起：卡片外壳必须整体移出视口，视口内只剩紫色把手` 锁住以上全部，
+其中 `!/\dpx/` 这条专门拒绝"用 px 补偿留一条"的写法。
+
+### 把手：视觉窄、热区宽
+
+露出宽度 `EDGE_HANDLE_W = 10px`（≈ 8px 胶囊 + 1px 呼吸）。**不要把它当成热区宽度**：
+`.oq-edge-handle` 实际 `width:22px` 并向卡片内侧偏移 12px，于是 10px 在视口内、
+12px 在已推出视口的卡片内部——`pointer-events` 照样生效，点起来不费劲。
+
+两条连带约束：
+
+1. 收起态必须 `overflow:visible`。`.oq-card` 基类是 `overflow:hidden`（裁圆角与材质伪元素），
+   会把外扩的热区裁掉一半。收起态内容已 `opacity:0`，不裁也看不出差别。
+2. 悬停反馈**不要改宽度**。10px 露出区里胶囊一变宽就贴到视口边缘，看起来像"卡片又滑出来
+   一点"。只变高（44→52px）+ 提亮即可。
+
+这两条都有单测守着（热区宽度 > 露出宽度、收起态含 `overflow:visible`）。
+
+### 四条不能违背的实现约束
+
+1. **禁止用 `display:none` / `width:0` 收起**：卡片高度由 JS 量 `.oq-carousel` 的
+   `active.scrollHeight` 写入（见自适应轮播高度 effect），元素不可见时量到 0，
+   恢复后没有 deps 变化触发重测 → 塌成一条线。只用 `transform: translateX(...)`。
+2. **拖拽 effect 依赖 `[hidden]`，闭包读 state 会读到首帧旧值**：所有在拖拽/悬停回调里
+   读的 edge 状态必须走 `edgeOnRef` / `edgeStateRef`（每次渲染同步赋值）。
+3. **关闭开关必须清 `LS_EDGE_STATE`**，否则窗口卡在把手条上而功能已关（无从展开）。
+4. **收起前把卡片摆到对应边缘**、**`applyPos` 按停靠侧纠正 `left`**：否则展开会从半空
+   或错误一侧滑出。
+
+### 把手为什么是真实 DOM 而不是伪元素
+
+需要独立承接 `click`（锁定展开）与 `mouseenter`（悬停展开）。伪元素的事件会冒泡到
+`.oq-card` 本身，与拖拽的 `mousedown` 无法区分——而拖拽必须保留（用户靠拖拽把卡片拉出来）。
+
 ## 自定义区间（custom）
 
 ### 服务端裁剪是唯一真相来源

@@ -302,6 +302,379 @@ test("detailVal：avgMs/topProject 缺失时给出可排序的稳定值（不返
   assert.equal(detailVal(full, "topProject"), "demo");
 });
 
+// ── 贴边收起（方案 A：把手条）────────────────────────────────────────────
+// 触发时机是用户明确指定的："贴边后**再往边缘拽一下**才吸入"，不是松手就收起。
+test("贴边收起：默认关闭，开启后能读回", () => {
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  const { loadEdgeCollapse, saveEdgeCollapse, LS_EDGE_COLLAPSE } = T;
+  assert.equal(loadEdgeCollapse(), false, "默认必须是关（老用户升级观感不变）");
+  saveEdgeCollapse(true);
+  assert.equal(mem.get(LS_EDGE_COLLAPSE), "1");
+  assert.equal(loadEdgeCollapse(), true);
+  saveEdgeCollapse(false);
+  assert.equal(loadEdgeCollapse(), false);
+  delete globalThis.localStorage;
+});
+
+test("贴边收起：关闭开关必须顺手清掉「已收起」状态（否则窗口卡在把手条上）", () => {
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  const { saveEdgeCollapse, saveEdgeState, loadEdgeState, LS_EDGE_STATE } = T;
+  saveEdgeState({ edge: "right" });
+  assert.deepEqual(loadEdgeState(), { edge: "right" });
+  saveEdgeCollapse(true);
+  saveEdgeState({ edge: "left" });
+  saveEdgeCollapse(false);
+  assert.equal(mem.has(LS_EDGE_STATE), false, "关闭功能时 LS_EDGE_STATE 必须被移除");
+  assert.equal(loadEdgeState(), null);
+  delete globalThis.localStorage;
+});
+
+test("贴边收起：edgeState 只认 left/right，非法值一律当展开", () => {
+  const mem = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+    setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k),
+  };
+  const { loadEdgeState, saveEdgeState, LS_EDGE_STATE } = T;
+  assert.equal(loadEdgeState(), null, "无存储时是展开态");
+  for (const bad of ['{"edge":"top"}', '{"edge":""}', "not json", "[]", '{"edge":null}']) {
+    mem.set(LS_EDGE_STATE, bad);
+    assert.equal(loadEdgeState(), null, "非法状态应回落到展开：" + bad);
+  }
+  saveEdgeState({ edge: "left" });
+  assert.deepEqual(loadEdgeState(), { edge: "left" });
+  // 传 null 等价于"取消收起"
+  saveEdgeState(null);
+  assert.equal(loadEdgeState(), null);
+  delete globalThis.localStorage;
+});
+
+// ── 这两个 bug 都导致"开关打开了但拽了没反应"，必须有测试钉住 ──
+test("edgeCardClass：oq-edge-open 与收起态互斥（否则 transform 被永久压成 none）", () => {
+  const { edgeCardClass } = T;
+  const base = "oq-card m-classic";
+
+  // 未开启 / 未收起 → 不加任何 edge 类
+  assert.equal(edgeCardClass(base, { on: false, state: { edge: "left" }, open: false, locked: false }), base);
+  assert.equal(edgeCardClass(base, { on: true, state: null, open: false, locked: false }), base);
+
+  // 真收起 → 有 oq-edge + 侧别，**且绝对不能有 oq-edge-open**
+  const c1 = edgeCardClass(base, { on: true, state: { edge: "left" }, open: false, locked: false });
+  assert.ok(c1.includes("oq-edge "), "应包含 oq-edge");
+  assert.ok(c1.includes("oq-edge-left"));
+  assert.ok(!c1.includes("oq-edge-open"), "收起态绝不能挂 oq-edge-open，否则 transform:none 会盖掉 translateX（实测 bug）");
+
+  const c2 = edgeCardClass(base, { on: true, state: { edge: "right" }, open: false, locked: false });
+  assert.ok(c2.includes("oq-edge-right") && !c2.includes("oq-edge-open"));
+
+  // 悬停展开 / 锁定展开 → 加 oq-edge-open
+  const c3 = edgeCardClass(base, { on: true, state: { edge: "left" }, open: true, locked: false });
+  assert.ok(c3.includes("oq-edge-open"), "悬停展开应加 oq-edge-open");
+  const c4 = edgeCardClass(base, { on: true, state: { edge: "right" }, open: false, locked: true });
+  assert.ok(c4.includes("oq-edge-open"), "锁定展开也应加 oq-edge-open");
+});
+
+test("edgePullVerdict：armAt 不能每帧重置（旧实现在每帧写当前鼠标 x，pushed 恒为 0）", () => {
+  const { edgePullVerdict, EDGE_PULL_TRIGGER } = T;
+  const geo = { width: 260, viewport: 1200, gap: 6, trigger: EDGE_PULL_TRIGGER };
+
+  // 第 1 帧：刚贴到左边缘，x=100，记录锚点
+  let s = edgePullVerdict(null, Object.assign({}, geo, { left: 6, x: 100 }));
+  assert.equal(s.armEdge, "left");
+  assert.equal(s.armAt, 100);
+  assert.equal(s.collapse, false, "刚贴边不应立刻吸入");
+
+  // 第 2 帧：继续往左推 5px（鼠标 x=95），仍未到阈值
+  s = edgePullVerdict(s, Object.assign({}, geo, { left: 6, x: 95 }));
+  assert.equal(s.armAt, 100, "锚点必须保持 100，不能被重置成 95");
+  assert.equal(s.collapse, false);
+
+  // 第 3 帧：推到 x=80，累计 20px ≥ 18 → 吸入
+  s = edgePullVerdict(s, Object.assign({}, geo, { left: 6, x: 80 }));
+  assert.equal(s.collapse, true, "累计位移必须能触发吸入（这正是实测失败的那个 bug）");
+});
+
+test("edgePullVerdict：未贴边不吸入；离开边缘后锚点重置", () => {
+  const { edgePullVerdict, EDGE_PULL_TRIGGER } = T;
+  const geo = { width: 260, viewport: 1200, gap: 6, trigger: EDGE_PULL_TRIGGER };
+
+  // 卡片在中间，往左猛推也不应吸入
+  let s = edgePullVerdict(null, Object.assign({}, geo, { left: 400, x: 500 }));
+  assert.equal(s.armEdge, null);
+  assert.equal(s.collapse, false, "未贴边时不能吸入（否则斜拖路过边缘会误触发）");
+
+  // 贴左边缘建立锚点
+  s = edgePullVerdict(null, Object.assign({}, geo, { left: 6, x: 300 }));
+  assert.equal(s.armAt, 300);
+  // 离开边缘（left 变 200）→ 锚点清除
+  s = edgePullVerdict(s, Object.assign({}, geo, { left: 200, x: 260 }));
+  assert.equal(s.armEdge, null);
+  assert.equal(s.armAt, null);
+  // 再次贴边 → 重新计时，不应拿旧锚点算位移
+  s = edgePullVerdict(s, Object.assign({}, geo, { left: 6, x: 250 }));
+  assert.equal(s.armAt, 250, "重新贴边必须重新计时");
+  assert.equal(s.collapse, false);
+});
+
+test("edgePullVerdict：贴右边缘时方向相反（往右推才吸入）", () => {
+  const { edgePullVerdict, EDGE_PULL_TRIGGER } = T;
+  const geo = { width: 260, viewport: 1200, gap: 6, trigger: EDGE_PULL_TRIGGER };
+  const rightLeft = 1200 - 260 - 6;   // 934
+
+  let s = edgePullVerdict(null, Object.assign({}, geo, { left: rightLeft, x: 1000 }));
+  assert.equal(s.armEdge, "right");
+  assert.equal(s.collapse, false);
+  // 往左推（远离边缘）不应吸入
+  s = edgePullVerdict(s, Object.assign({}, geo, { left: rightLeft - 40, x: 960 }));
+  assert.equal(s.armEdge, null, "离开右边缘后不再是贴边态");
+  // 回到右边缘再往右推
+  s = edgePullVerdict(null, Object.assign({}, geo, { left: rightLeft, x: 1000 }));
+  s = edgePullVerdict(s, Object.assign({}, geo, { left: rightLeft, x: 1025 }));
+  assert.equal(s.collapse, true, "右边缘往右推 25px 应吸入");
+});
+
+// ── 动效不变量（用户反馈"吸附和弹出动画设计很差"）──
+// 根因：left/bottom 与 transform 两套过渡同时跑，各自计时与缓动不同 → 视觉上"抖一下再滑"。
+// 这些断言直接检查 CSS 文本，防止再把过渡加回 left/bottom。
+test("动效：收起/展开的过渡只挂在 transform 上，left/bottom 不得有过渡", () => {
+  const css = T.__EDGE_CSS_PROBE;
+  assert.ok(Array.isArray(css) && css.length > 0, "__EDGE_CSS_PROBE 应导出贴边相关 CSS 规则");
+  const text = css.join("\n");
+
+  // 1) 位移规则本身不能带 transition（transition 统一由 .oq-edge 声明）
+  for (const side of ["left", "right"]) {
+    const m = text.match(new RegExp("\\.oq-card\\.oq-edge-" + side + "\\{([^}]*)\\}"));
+    assert.ok(m, "应有 .oq-card.oq-edge-" + side + " 规则");
+    assert.ok(m[1].includes("translateX"), side + " 侧必须用 translateX 位移");
+    assert.ok(!m[1].includes("transition"), side + " 侧规则不得自带 transition（会与 .oq-edge 的重复）");
+  }
+
+  // 2) 任何贴边相关规则都不得给 left/bottom 加过渡
+  assert.ok(!/transition:[^;}]*\bleft\b/.test(text), "禁止给 left 加过渡（两套动画会互相拉扯）");
+  assert.ok(!/transition:[^;}]*\bbottom\b/.test(text), "禁止给 bottom 加过渡（两套动画会互相拉扯）");
+
+  // 3) 收起与展开必须是两条不同的缓动（收束 vs 拉出）
+  const edgeRule = text.match(/\.oq-card\.oq-edge\{([^}]*)\}/);
+  const openRule = text.match(/\.oq-card\.oq-edge-open\{([^}]*)\}/);
+  assert.ok(edgeRule && edgeRule[1].includes("cubic-bezier"), "收起应有明确缓动");
+  assert.ok(openRule && openRule[1].includes("cubic-bezier"), "展开应有明确缓动");
+  assert.notEqual(edgeRule[1], openRule[1], "收起与展开的过渡不应完全相同（要有方向感差异）");
+
+  // 4) 必须有 will-change，避免每帧重绘 backdrop-filter
+  assert.ok(edgeRule[1].includes("will-change:transform"), "收起态应提升合成层");
+});
+
+test("把手：可触区必须大于胶囊（细视觉 + 大好点）", () => {
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+  const handle = text.match(/\.oq-edge-handle\{([^}]*)\}/);
+  assert.ok(handle, "应有 .oq-edge-handle 规则");
+  const hitW = Number((handle[1].match(/width:(\d+)px/) || [])[1]);
+  assert.ok(hitW > T.EDGE_CAPSULE_W,
+    "热区宽度(" + hitW + ") 必须大于胶囊宽度(" + T.EDGE_CAPSULE_W + ")，否则细胶囊点不到");
+  assert.equal(hitW, T.EDGE_HANDLE_HIT_W, "CSS 的热区宽度应与常量一致");
+
+  // 收起态必须放开 overflow：把手挂在卡片外侧，overflow:hidden 会把它整个裁掉
+  const hidden = text.match(/\.oq-card\.oq-edge:not\(\.oq-edge-open\)\{([^}]*)\}/);
+  assert.ok(hidden && hidden[1].includes("overflow:visible"),
+    "收起态必须 overflow:visible，否则挂在卡片外侧的把手被裁掉");
+});
+
+// 用户截图指出"怎么有两层"：深色卡片外壳 + 紫色胶囊叠在一起。
+// 根因是收起时卡片只移出"100% - 把手宽"，那几 px 里除了胶囊还有卡片背景/描边/圆角。
+test("贴边收起：卡片外壳必须整体移出视口，视口内只剩紫色把手", () => {
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+
+  // 1) 位移必须是完整 100%，不能留任何 px 在外（留了就会看到深色外壳边缘）
+  for (const side of ["left", "right"]) {
+    const m = text.match(new RegExp("\\.oq-card\\.oq-edge-" + side + "\\{([^}]*)\\}"));
+    assert.ok(m, "应有 .oq-edge-" + side + " 规则");
+    // 注意：位移里含 calc(...)，用 .* 贪婪匹配到行尾的右括号（[^)]* 会在 calc 的
+    // 第一个右括号处截断，导致表达式残缺）
+    const tx = m[1].match(/translateX\((.*)\)/);
+    assert.ok(tx, side + " 侧应有 translateX");
+    // 位移必须是「整卡宽 + EDGE_GAP」：卡片收起前 left=EDGE_GAP，只 -100% 时右边界会
+    // 停在 x=EDGE_GAP，那几 px 就是用户看到的"残留侧边"。所以必须是 -100% 再减一个 gap。
+    const expr = tx[1].replace(/\s/g, "");
+    const sign = side === "left" ? "-" : "";
+    assert.ok(
+      expr === "calc(" + sign + "100%-" + T.EDGE_GAP + "px)" || expr === "calc(" + sign + "100%+" + T.EDGE_GAP + "px)",
+      side + " 位移必须是「整卡宽 + EDGE_GAP」才能完全退出视口，实际 " + expr
+    );
+    // 关键：不能是"留一条"的写法（-100% + Npx 会露出卡片外壳形成'两层'）
+    assert.ok(!/100%\+10px/.test(expr) && !/100%-10px/.test(expr),
+      "位移不能是 -100% + 固定 px（那正是'漏边'的来源），实际 " + expr);
+  }
+
+  // 2) 把手必须挂在卡片外侧，且偏移要保证"胶囊左边缘距视口 = EDGE_GAP"。
+  //    X = EDGE_GAP + CARD_BORDER_W + (CAPSULE_W + HIT_W)/2
+  //    两处历史误差：① 少算胶囊自身宽度的一半（差 1px）
+  //                  ② 漏掉卡片的 1px 透明 border（absolute 定位的包含块是 padding box）
+  const off = T.EDGE_GAP + T.CARD_BORDER_W + (T.EDGE_CAPSULE_W + T.EDGE_HANDLE_HIT_W) / 2;
+  const l = text.match(/\.oq-edge-handle\[data-side=left\]\{([^}]*)\}/);
+  const r = text.match(/\.oq-edge-handle\[data-side=right\]\{([^}]*)\}/);
+  assert.ok(l && l[1].includes("right:-" + off + "px"),
+    "左停靠把手偏移应为 right:-" + off + "px，实际 " + (l && l[1]));
+  assert.ok(r && r[1].includes("left:-" + off + "px"),
+    "右停靠把手偏移应为 left:-" + off + "px，实际 " + (r && r[1]));
+
+  // 3) 几何自洽：按该偏移反推胶囊左边缘到视口的距离，必须正好等于 EDGE_GAP。
+  //    包含块是 padding box（右边界在 -CARD_BORDER_W），所以要先减去 border。
+  const capLeft = (off - T.CARD_BORDER_W) - (T.EDGE_HANDLE_HIT_W - T.EDGE_CAPSULE_W) / 2 - T.EDGE_CAPSULE_W;
+  assert.equal(capLeft, T.EDGE_GAP,
+    "胶囊左边缘距视口应为 EDGE_GAP(" + T.EDGE_GAP + "px)，按偏移 " + off + "px 反推得到 " + capLeft);
+
+  // 3) 透明/无阴影/无模糊必须**只作用于真收起态**（:not(.oq-edge-open)）
+  const hiddenRule = text.match(/\.oq-card\.oq-edge:not\(\.oq-edge-open\)\{([^}]*)\}/);
+  assert.ok(hiddenRule, "应有 .oq-card.oq-edge:not(.oq-edge-open) 规则");
+  for (const decl of ["background:transparent", "box-shadow:none", "backdrop-filter:none"]) {
+    assert.ok(hiddenRule[1].includes(decl),
+      "收起态必须包含 " + decl + "，否则会残留外壳或模糊带，实际 " + hiddenRule[1]);
+  }
+
+  // ⚠️ 关键回归：这些"隐形"声明绝不能写在 .oq-card.oq-edge 这种"收起+展开都命中"的规则里。
+  // 上一版就是这样：展开时卡片没有背景色，只剩 backdrop-filter:blur() → 用户看到毛玻璃，
+  // 要再点一下（类名变化）才恢复。
+  const commonRule = text.match(/\.oq-card\.oq-edge\{([^}]*)\}/);
+  assert.ok(commonRule, "应有共用规则 .oq-card.oq-edge");
+  for (const bad of ["background:transparent", "box-shadow:none", "backdrop-filter:none", "border-color:transparent"]) {
+    assert.ok(!commonRule[1].includes(bad),
+      "共用规则里不能有 " + bad + "（会让展开态也隐形，出现毛玻璃），实际 " + commonRule[1]);
+  }
+});
+
+// ── 胶囊视觉与动效（用户反馈"颜色淡了一点"，并要求加动效）──
+test("胶囊：底色/描边必须够实（旧的 0.42 中部 + 0.18 描边看起来像半截）", () => {
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+  const cap = text.match(/\.oq-edge-handle::before\{([^}]*)\}/);
+  assert.ok(cap, "应有胶囊本体规则");
+
+  // 底色取"中间亮度"：既不能像最初 0.10/0.42 那样淡到像半截（用户第一次反馈），
+  // 也不能像 0.72/0.92 那样深成实心紫（用户第二次反馈"太深了"）。
+  // 判定用区间：两端 0.35~0.60，中部 0.65~0.85。
+  const alphas = [...cap[1].matchAll(/rgba\(152,140,255,([\d.]+)\)/g)].map((m) => Number(m[1]));
+  assert.ok(alphas.length >= 2, "渐变两端应使用 rgba(152,140,255,α)，实际 " + cap[1]);
+  for (const a of alphas) {
+    assert.ok(a >= 0.35 && a <= 0.6, "渐变两端不透明度应在 0.35~0.6，实际 " + a);
+  }
+  const core = cap[1].match(/rgba\(133,118,244,([\d.]+)\)/);
+  assert.ok(core, "渐变中部应使用 rgba(133,118,244,α)，实际 " + cap[1]);
+  const coreA = Number(core[1]);
+  assert.ok(coreA >= 0.65 && coreA <= 0.85, "渐变中部不透明度应在 0.65~0.85，实际 " + coreA);
+
+  // 描边：弱于 0.55（太深），强于 0.18（太淡）
+  const ring = cap[1].match(/0 0 0 1px rgba\(164,152,255,([\d.]+)\)/);
+  assert.ok(ring, "描边应使用 rgba(164,152,255,α)，实际 " + cap[1]);
+  const ringA = Number(ring[1]);
+  assert.ok(ringA >= 0.3 && ringA <= 0.5, "描边不透明度应在 0.3~0.5，实际 " + ringA);
+});
+
+test("动效：呼吸改 box-shadow（不是 opacity），且短线会张开", () => {
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+
+  // 1) 呼吸必须动 box-shadow 的强度/半径；旧的只改 opacity 0.86↔1，视觉上等于静止
+  const pulse = text.match(/@keyframes oqEdgePulse\{[\s\S]*?\}\}/);
+  assert.ok(pulse, "应有 oqEdgePulse 关键帧（含两段）");
+  assert.ok(pulse[0].includes("box-shadow"), "呼吸必须改变 box-shadow（改 opacity 幅度太小看不出来）");
+  assert.ok(/0 2px \d+px/.test(pulse[0]), "呼吸应同时改变外发光半径");
+
+  // 2) 短线必须真的"张开"：高度变化，而不只是透明度
+  // 注意：keyframes 内部有 0%,100%{} 50%{} 两段花括号，用 [^}]* 会在第一个 } 处截断，
+  // 必须取到整条 keyframes（到下一个顶层规则为止）
+  const grip = text.match(/@keyframes oqEdgeGrip\{[\s\S]*?\}\}/);
+  assert.ok(grip, "应有 oqEdgeGrip 关键帧（含两段）");
+  assert.ok(/height:\s*\d+px/.test(grip[0]), "短线张开必须改 height（仅改 opacity 看不出'张开'）");
+  const hs = [...grip[0].matchAll(/height:(\d+)px/g)].map((m) => Number(m[1]));
+  assert.ok(hs.length >= 2, "应至少两段 height 取值，实际 " + hs.join("/"));
+  assert.ok(Math.max(...hs) - Math.min(...hs) >= 4, "张开幅度应 >=4px，实际 " + hs.join("/"));
+
+  // 3) 两条循环动画只在真收起态跑（展开态卡片已出来，不需要再提示）
+  const pulseRule = text.match(/\.oq-card\.oq-edge:not\(\.oq-edge-open\) \.oq-edge-handle::before\{([^}]*)\}/);
+  assert.ok(pulseRule && pulseRule[1].includes("oqEdgePulse"), "呼吸应限定在收起态");
+  const gripRule = text.match(/\.oq-card\.oq-edge:not\(\.oq-edge-open\) \.oq-edge-handle::after\{([^}]*)\}/);
+  assert.ok(gripRule && gripRule[1].includes("oqEdgeGrip"), "张开应限定在收起态");
+});
+
+test("动效：吸入时播放一次性脉动，且不影响 3px 对齐", () => {
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+  const snap = text.match(/@keyframes oqEdgeSnapRing\{[\s\S]*?\}\}/);
+  assert.ok(snap, "应有 oqEdgeSnapRing 关键帧（吸入一次性反馈）");
+
+  // 必须用 box-shadow 扩散，**不能用 transform:scale**——缩放会让胶囊离开调好的 3px 基准
+  assert.ok(snap[0].includes("box-shadow"), "一次性脉动应用 box-shadow 扩散");
+  assert.ok(!snap[0].includes("transform"), "一次性脉动不能用 transform（会破坏 3px 间距对齐）");
+  assert.ok(/0 0 0 \d+px/.test(snap[0]), "应通过 spread 半径向外扩散");
+
+  // 只播一次（不是 infinite）
+  const snapRule = text.match(/\.oq-edge-handle\.oq-edge-snap::before\{([^}]*)\}/);
+  assert.ok(snapRule, "应有 .oq-edge-snap 规则");
+  assert.ok(!snapRule[1].includes("infinite"), "吸附脉动必须只播一次");
+  assert.ok(snapRule[1].includes(" 1"), "吸附脉动 animation-iteration-count 应为 1");
+});
+
+test("动效：内容淡出比位移快，且展开态内容不延迟淡入（否则先露空白）", () => {
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+  // 收起：内容 0.12s 淡出（远快于 0.42s 位移）——"内容先退场、空壳再滑出去"
+  const bodyOut = text.match(/\.oq-card\.oq-edge \.oq-body\{([^}]*)\}/);
+  assert.ok(bodyOut, "应有收起态内容规则");
+  const outSec = Number((bodyOut[1].match(/opacity ([\d.]+)s/) || [])[1]);
+  assert.ok(outSec > 0 && outSec <= 0.2, "内容淡出应在 0.2s 内，实际 " + outSec);
+
+  // 展开：内容淡入不得带 delay（会先露一片空白，像卡住）
+  const bodyIn = text.match(/\.oq-card\.oq-edge-open \.oq-body\{([^}]*)\}/);
+  assert.ok(bodyIn, "应有展开态内容规则");
+  assert.ok(!/\d+s\s+\d/.test(bodyIn[1].replace(/opacity/g, "")) || !/ease \d/.test(bodyIn[1]),
+    "展开态内容淡入不应带延迟，实际：" + bodyIn[1]);
+});
+
+test("贴边间距：EDGE_GAP 单一来源，CSS 不得写死 px（改一处即全局生效）", () => {
+  const { EDGE_GAP, EDGE_HANDLE_HIT_W } = T;
+  assert.equal(typeof EDGE_GAP, "number");
+  assert.ok(EDGE_GAP >= 0 && EDGE_GAP <= 12, "贴边间距应在 0~12px，实际 " + EDGE_GAP);
+
+  const text = T.__EDGE_CSS_PROBE.join("\n");
+
+  // 1) 位移公式必须是 -(100% + EDGE_GAP)：这一项错了就会漏边（留 EDGE_GAP 宽的一条）
+  const left = text.match(/\.oq-card\.oq-edge-left\{([^}]*)\}/);
+  assert.ok(left && left[1].includes("-100% - " + EDGE_GAP + "px"),
+    "位移必须减掉当前 EDGE_GAP(" + EDGE_GAP + "px)，实际 " + (left && left[1]));
+
+  // 2) 把手偏移必须是 -(EDGE_GAP + (CAPSULE_W + HIT_W)/2)：这一项错了胶囊会偏离目标间距
+  const hl = text.match(/\.oq-edge-handle\[data-side=left\]\{([^}]*)\}/);
+  const expectOff = EDGE_GAP + T.CARD_BORDER_W + (T.EDGE_CAPSULE_W + EDGE_HANDLE_HIT_W) / 2;
+  assert.ok(hl && hl[1].includes("right:-" + expectOff + "px"),
+    "把手偏移必须随 EDGE_GAP 联动（right:-" + expectOff + "px），实际 " + (hl && hl[1]));
+
+  // 3) overlay 默认 left 也必须由 EDGE_GAP 推导（首屏位置要与吸附落点一致）
+  const overlay = text.match(/\.oq-overlay\{([^}]*)\}/);
+  assert.ok(overlay && overlay[1].includes("left:" + EDGE_GAP + "px"),
+    "overlay 默认 left 必须等于 EDGE_GAP，实际 " + (overlay && overlay[1]));
+});
+
+test("贴边收起：把手尺寸与拖拽阈值在可用区间内", () => {
+  const { EDGE_CAPSULE_W, EDGE_HANDLE_HIT_W, EDGE_PULL_TRIGGER, EDGE_HOVER_OUT_MS, EDGE_CARD_OUT_PCT } = T;
+  // 胶囊要细（视觉轻），热区要够大（好点）
+  assert.ok(EDGE_CAPSULE_W >= 6 && EDGE_CAPSULE_W <= 12,
+    "胶囊宽度应在 6~12px，实际 " + EDGE_CAPSULE_W);
+  assert.ok(EDGE_HANDLE_HIT_W >= 16 && EDGE_HANDLE_HIT_W <= 32,
+    "热区宽度应在 16~32px，实际 " + EDGE_HANDLE_HIT_W);
+  assert.ok(EDGE_HANDLE_HIT_W > EDGE_CAPSULE_W, "热区必须大于胶囊，否则细胶囊点不到");
+  // 卡片必须完整移出视口：不是 100 就会在视口里留下深色外壳边缘（"两层"）
+  assert.equal(EDGE_CARD_OUT_PCT, 100, "卡片收起位移必须是完整 100%");
+  assert.ok(EDGE_PULL_TRIGGER >= 8 && EDGE_PULL_TRIGGER <= 40, "吸入阈值应在 8~40px，实际 " + EDGE_PULL_TRIGGER);
+  assert.ok(EDGE_HOVER_OUT_MS >= 200 && EDGE_HOVER_OUT_MS <= 1200, "悬停收回延迟应在 200~1200ms，实际 " + EDGE_HOVER_OUT_MS);
+});
+
 test("DETAIL_COLS：列定义覆盖用户选的三类（基础/拆分/扩展）", () => {
   const { DETAIL_COLS } = T;
   const keys = DETAIL_COLS.map((c) => c[0]);
