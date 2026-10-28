@@ -31,6 +31,13 @@ DeepSeek Harness (DSH) 标准插件 — **Opencode / DeepSeek / R4Coder 额度 +
   管理面板（用量统计 / 外观 / 数据源 / 通用 / 维护，与设置页同一套内容）；页头提供悬浮窗
   显隐开关，悬浮窗与面板互不影响、可同屏。旧版 DSH 不受影响（详见 [v0.2.1 侧栏适配](#dsh-v021-侧栏适配)）
 - **多提供商聚合**：Opencode / DeepSeek / R4Coder / TokenMeter
+- **网关用量并入**（可选，默认开）：如果装了 `dsh-providers-hub`（Jet Hub），它的
+  **本机 OpenAI 网关**流量会一并计入本插件的用量统计 —— 网关请求不建会话，本地会话
+  事件流看不见它；实测某日它占全机 token 的 52%，不并入就会少报一半。数据来源是
+  对方落盘的 `$DSH_HOME/jet-hub/token-ledger.json`（**只读**，只取 `channel=gateway`
+  的桶，不写对方任何文件），开关与状态在「设置 → 网关」。口径限制：
+  对方只有「日 × 渠道 × 账号 × 模型」聚合，因此网关部分**没有**项目/会话/工具/
+  24 小时分布/逐笔明细，这些维度仍只统计本机会话（界面会如实标注）
 - **自定义区间**：范围除今日/7天/30天/90天/全部外，还可选**任意起止日期**（本地日、闭区间，
   最多近 90 天）。起止写反、超范围、早于保留窗口都会由服务端裁剪并如实提示
 - **逐日明细表**（默认展开在图表下方）：日期 / 总量 / 回复 / 新输入 / 缓存读 / 输出 / 项目 /
@@ -95,6 +102,7 @@ github:CuiKuLaXiua/dsh-quota-widget
 | 刷新间隔 | 秒，默认 120，建议 >= 60 |
 | DeepSeek Key | DeepSeek API Key（Bearer） |
 | R4Coder Base URL | 自定义 host（如 `https://api.r4.codes/v1`） |
+| 网关监测（`设置 → 网关`） | 默认开。关掉后宿主**立即停止读取**对方账本、也不合并，统计回落到「仅本机」口径 |
 
 ## DSH v0.2.1 侧栏适配
 
@@ -126,6 +134,7 @@ github:CuiKuLaXiua/dsh-quota-widget
 - **账本快照**：清空账本前自动把完整库快照到 `$DSH_HOME/storages/token-meter-backups/`（保留最近 10 份），内容与账本同源、同样不含对话内容；**需要彻底删除时请手动删掉该目录**；
 - **本地回环防护**：所有 HTTP 端点仅接受 `127.0.0.1` / `localhost` / `::1` 回环访问，并校验 `Sec-Fetch-Site`，防 DNS rebinding 与跨站读取；破坏性端点（清空账本）额外要求一次性 nonce（60s 有效、用后即焚），防本机其它进程重放；
 - **上游主机白名单**：Opencode / DeepSeek 的 baseUrl 仅允许官方域名（`opencode.ai`、`api.opencode.ai`、`api.deepseek.com`）且强制 HTTPS，非白名单配置会自动回退官方端点。
+- **网关账本只读**：本插件会读取 `dsh-providers-hub` 落盘的 `$DSH_HOME/jet-hub/token-ledger.json`，仅取 `channel=gateway` 的**日聚合计数**（请求数、输入/输出/缓存读 token、模型名、渠道名）。**不写入、不修改对方任何文件，不调用对方任何接口**；不读取账号 id（响应里只回渠道级聚合）；不含对话内容。可在「设置 → 网关」一键关闭，关闭后宿主立即停止读取并在内存中清空已读数据。
 
 ### 风险提示（请知悉）
 

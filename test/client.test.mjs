@@ -2,9 +2,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { loadClientTesting } from "./load-client.mjs";
+import { loadClientModule } from "./load-client.mjs";
 
-const T = await loadClientTesting();
+// 需要一个能返回结构化元素的 jsx 桩：默认的 stubRequire 里 jsx/jsxs 直接返回 null，
+// 那样任何"返回元素"的纯函数（如 ringEl）都拿不到东西可断言。
+// 这里只替换 react/jsx-runtime，react 仍用最小桩。
+const jsxStub = (type, props) => ({ type, props: props || {} });
+const T = (await loadClientModule({
+  requireStub: (name) => {
+    if (name === "react") {
+      return { useState: (v) => [v, () => {}], useRef: (v) => ({ current: v }), useEffect: () => {}, useMemo: (f) => f() };
+    }
+    if (name === "react/jsx-runtime") return { jsx: jsxStub, jsxs: jsxStub, Fragment: {} };
+    throw new Error("unexpected require: " + name);
+  },
+})).__testing;
 const { HEAT_LV, heatLvOf, groupTodayHourBuckets, fmtTokens } = T;
 
 // 悬浮窗图表形态的读写闭环：loadTmChart 只认 bar/heat，写入由设置页「小窗口图表」卡片驱动。
@@ -721,6 +733,81 @@ test("贴边收起：把手尺寸与拖拽阈值在可用区间内", () => {
   assert.equal(EDGE_CARD_OUT_PCT, 100, "卡片收起位移必须是完整 100%");
   assert.ok(EDGE_PULL_TRIGGER >= 8 && EDGE_PULL_TRIGGER <= 40, "吸入阈值应在 8~40px，实际 " + EDGE_PULL_TRIGGER);
   assert.ok(EDGE_HOVER_OUT_MS >= 200 && EDGE_HOVER_OUT_MS <= 1200, "悬停收回延迟应在 200~1200ms，实际 " + EDGE_HOVER_OUT_MS);
+});
+
+// ── 缓存命中率圆环（SVG）────────────────────────────────────────────────
+// 旧实现是 28px conic-gradient：环宽 4px、数字 8px、硬切端点、单一平色、无底槽。
+test("圆环：尺寸/环宽/字号在合理区间（环不能太细也不能太粗）", () => {
+  const { RING_SIZE, RING_STROKE, RING_GAP } = T;
+  assert.ok(RING_SIZE >= 32 && RING_SIZE <= 40, "直径应在 32~40px，实际 " + RING_SIZE);
+  // 下界防"太细"（旧版 4px 环在小直径上像点框），上界防"太粗"（6px 被用户指出太粗）
+  assert.ok(RING_STROKE >= 3 && RING_STROKE <= 5,
+    "环宽应在 3~5px（6px 太粗、4px 配 28px 直径太细），实际 " + RING_STROKE);
+  // 环占面积 ≈ 1 - (1-2s/d)^2，用内孔比例间接校验"视觉粗细"
+  const innerRatio = (RING_SIZE - 2 * RING_STROKE) / RING_SIZE;
+  assert.ok(innerRatio >= 0.68, "内孔应占直径 >=68%（否则环显粗），实际 " + innerRatio.toFixed(3));
+
+  // 缺口必须与环宽解耦：环变细时缺口不能跟着变窄，否则 99% 又和 100% 分不清
+  assert.ok(RING_GAP >= 4, "缺口应 >=4px，实际 " + RING_GAP);
+  assert.notEqual(RING_GAP, RING_STROKE, "缺口不应等于环宽（必须解耦）");
+
+  const css = T.__EDGE_CSS_PROBE.join("\n");
+  assert.ok(/\.oq-tm-ring b\{[^}]*font-size:12px/.test(css),
+    "圆环数字字号应为 12px，实际 " + css.slice(0, 400));
+  // 旧的内孔伪元素必须已删除（SVG 自带内孔，留着会盖住环）
+  assert.ok(!css.includes("oq-tm-ring::after"), "旧 ::after 内孔规则应已删除");
+});
+
+test("圆环：99% 必须留可见缺口，只有 100% 才闭合", () => {
+  const { ringEl } = T;
+  // ringEl 返回 jsx 桩对象；取第二个 circle（进度弧）的 stroke-dasharray
+  const dashOf = (pct) => {
+    const root = ringEl(pct, { id: "t" });
+    const circles = [];
+    const walk = (n) => {
+      if (!n || typeof n !== "object") return;
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      if (n.type === "circle") circles.push(n.props);
+      if (n.props && n.props.children) walk(n.props.children);
+    };
+    walk(root);
+    // circles[0] = 底槽，circles[1] = 进度弧
+    return circles.length > 1 ? circles[1]["stroke-dasharray"] : null;
+  };
+
+  // 100% → 整圈（dash == gap == 周长，视觉闭合）
+  const d100 = dashOf(100);
+  assert.ok(d100, "100% 应有进度弧");
+  const [len100, gap100] = d100.split(" ").map(Number);
+  assert.ok(Math.abs(len100 - gap100) < 0.01, "100% 应画满整圈，实际 " + d100);
+
+  // 99% → 必须比"理论弧长"短一截，留出可见缺口
+  const d99 = dashOf(99);
+  const [len99, gap99] = d99.split(" ").map(Number);
+  const c = len100;                       // 周长（100% 时 dash == c）
+  const ideal99 = c * 0.99;               // 理论弧长
+  const gapPx = ideal99 - len99;          // 实际让出的缺口
+  assert.ok(gapPx >= 4,
+    "99% 必须留 >=4px 缺口（否则与 100% 视觉无法区分），实际缺口 " + gapPx.toFixed(2) + "px");
+
+  // 0% → 不应画弧（dash 为 0 或负，被 clamp 到 0）
+  const d0 = dashOf(0);
+  if (d0) assert.equal(Number(d0.split(" ")[0]), 0, "0% 不应画弧，实际 " + d0);
+});
+
+test("圆环：无数据（null）不画进度弧，只留底槽", () => {
+  const { ringEl } = T;
+  const root = ringEl(null, { id: "t" });
+  const circles = [];
+  const walk = (n) => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) { n.forEach(walk); return; }
+    if (n.type === "circle") circles.push(n.props);
+    if (n.props && n.props.children) walk(n.props.children);
+  };
+  walk(root);
+  assert.equal(circles.length, 1, "无数据时应只有底槽一个 circle，实际 " + circles.length);
+  assert.ok(circles[0].stroke.includes("rgba(255,255,255"), "底槽应为淡白轨道");
 });
 
 test("DETAIL_COLS：列定义覆盖用户选的三类（基础/拆分/扩展）", () => {

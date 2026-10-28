@@ -6,6 +6,7 @@
 // 并用桩 fetch 喂一份真实形状的 payload，走完"有数据"的全部分支。
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { loadClientModule } from "./load-client.mjs";
 
@@ -17,6 +18,62 @@ const dayKey = (offset) => {
 };
 const today = dayKey(0);
 const hourKey = (h) => today + "T" + String(h).padStart(2, "0");
+
+/**
+ * 网关账本诊断端点的"正常"响应（字段照 host 的 /api/token-meter/gateway 裁剪）。
+ * 单测里各状态用 gatewayPayload 覆盖，默认走这个"一切正常且有数据"的形状。
+ */
+function gatewayOkPayload() {
+  const d0 = dayKey(0), d1 = dayKey(1);
+  return {
+    ok: true, disabled: false, available: true, error: null, detail: null,
+    schema: "dsh-codearts-auth/token-ledger/v2",
+    path: "C:\\Users\\tester\\.dsh\\jet-hub\\token-ledger.json",
+    triedPaths: ["C:\\Users\\tester\\.dsh\\jet-hub\\token-ledger.json"],
+    mtimeMs: now, size: 92472, loadedAt: now,
+    dayCount: 2, bucketCount: 3, firstDay: d1, lastDay: d0, empty: false,
+    note: "UTC+8 日界；无项目/会话/小时/逐笔维度",
+    days: [
+      { day: d0, requests: 140, total: 3000, freshInput: 500, cacheRead: 2400, output: 100 },
+      { day: d1, requests: 60, total: 1500, freshInput: 300, cacheRead: 1100, output: 100 },
+    ],
+    models: [{ model: "deepseek-v4.1-flash", total: 4000 }, { model: "kimi-k2.8-preview", total: 500 }],
+    providers: [{ provider: "buddy", total: 4000 }, { provider: "trae", total: 500 }],
+  };
+}
+/** 六种状态各造一份（available/error/empty/disabled 组合） */
+function gatewayPayloadFor(kind) {
+  const base = gatewayOkPayload();
+  if (kind === "not-found") {
+    return Object.assign({}, base, {
+      available: false, error: "not-found", path: null, schema: null, dayCount: 0, bucketCount: 0,
+      empty: false, days: [], models: [], providers: [],
+      triedPaths: ["C:\\Users\\tester\\.dsh\\jet-hub\\token-ledger.json", "D:\\home\\jet-hub\\token-ledger.json"],
+    });
+  }
+  if (kind === "bad-schema") {
+    return Object.assign({}, base, {
+      available: false, error: "bad-schema", detail: "some-other/v1", dayCount: 0, bucketCount: 0,
+      empty: false, days: [], models: [], providers: [],
+    });
+  }
+  if (kind === "bad-json") {
+    return Object.assign({}, base, {
+      available: false, error: "bad-json", detail: "Unexpected token", dayCount: 0, bucketCount: 0,
+      empty: false, days: [], models: [], providers: [],
+    });
+  }
+  if (kind === "empty") {
+    return Object.assign({}, base, {
+      available: true, error: null, dayCount: 0, bucketCount: 0, empty: true,
+      days: [], models: [], providers: [],
+    });
+  }
+  if (kind === "disabled") {
+    return Object.assign({}, base, { disabled: true, days: [], models: [], providers: [] });
+  }
+  return base;
+}
 
 /** 真实形状的 payload（字段照 host 的 /api/token-meter 响应裁剪） */
 function payload(range) {
@@ -46,6 +103,11 @@ function payload(range) {
       { time: now - 60000, sessionId: "session-c225", model: "deepseek-v4-flash", provider: "opencode", project: "", input: 900, output: 100, cacheRead: 0, durationMs: 0 },
     ], live: { turns: 3, steps: 12, llmMs: 40000, toolMs: 10000, toolCalls: 20, firstTokenMs: 0, firstTokenCount: 0, tokPerSec: 25, rate60: 1.5, rate60Tokens: 90, rate60WindowSec: 60, msgs: 5, signalCount: {}, outputTokens: 1000 } },
     totals, prevTotals: totals2, daily,
+    // 分源拆解：total(20000) 里含网关 6000（其余 14000 属本机）
+    sources: {
+      gateway: { total: 6000, requests: 200, available: true, enabled: true, error: null, detail: null, schema: "dsh-codearts-auth/token-ledger/v2", dayCount: 2, bucketCount: 3, note: "UTC+8 日界" },
+      local: { total: 14000, requests: 33 },
+    },
     models: [], records: [],
     tools: [{ tool: "read", calls: 12, ms: 300, avgMs: 25 }, { tool: "pwsh", calls: 8, ms: 9000, avgMs: 1125 }],
     projects: [{ project: "token-lens", requests: 9, freshInput: 300, output: 200, cacheRead: 2900, tools: 4, total: 3400 }],
@@ -107,7 +169,7 @@ function collectText(node, out = []) {
   return out;
 }
 
-async function setup({ localStorageSeed = {}, fetchPayload } = {}) {
+async function setup({ localStorageSeed = {}, fetchPayload, gatewayPayload } = {}) {
   const { react, reset } = makeReactStub();
   const jsxStub = makeJsxStub();
   const requireStub = (name) => {
@@ -164,6 +226,10 @@ async function setup({ localStorageSeed = {}, fetchPayload } = {}) {
     }
     if (u.indexOf("/api/token-meter/reset") >= 0) {
       return { status: 200, ok: true, json: async () => ({ ok: true, scope: "all", cleared: 42, remaining: 0, persistent: true, error: null, backup: { ok: true, file: "C:\\x\\b.db", bytes: 99999 }, vacuum: { ok: true, pagesBefore: 200, pagesAfter: 4 } }) };
+    }
+    // 「网关」tab 的诊断端点。必须排在 /api/token-meter 兜底之前（URL 前缀相同）。
+    if (u.indexOf("/api/token-meter/gateway") >= 0) {
+      return { status: 200, ok: true, json: async () => (gatewayPayload ? gatewayPayload(u) : gatewayOkPayload()) };
     }
     const m = u.match(/range=([^&]+)/);
     const range = m ? decodeURIComponent(m[1]) : "1d";
@@ -953,5 +1019,305 @@ test("设置页渲染冒烟：无需补录时明确提示，不给确认入口",
   } finally {
     globalThis.fetch = prevFetch;
     delete globalThis.window;
+  }
+});
+
+// ===== 设置页「网关」tab（dsh-providers-hub 网关用量）=====
+// 背景：网关请求不建会话，本地三条摄入通路都看不见；实测某日它占全机 token 的 52%。
+// 这一页是**授权 + 可见性**页面：开关必须真生效（关掉后宿主不再读对方账本），
+// 六种状态必须各自说人话，尤其"账本存在但没有网关流量"不能报成故障。
+/**
+ * 只取**当前可见**面板的文本。
+ * ⚠️ flatText 会把 `display:none` 的兄弟面板也收进来（它们仍在树里），
+ * 于是"网关页不该出现全部测试"这类断言会因为数据源页的内容而假红。
+ * 判据用面板装配处写的契约属性 `data-panel` / `data-active`
+ * （靠 style 反推不可靠：隐藏面板仍在树里，且多个面板 style 形状相同）。
+ */
+function activePanelNode(tree) {
+  const hits = [];
+  const walk = (n) => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n)) { n.forEach(walk); return; }
+    if (n.props) {
+      if (n.props["data-panel"] && n.props["data-active"] === "1") hits.push(n);
+      walk(n.props.children);
+    }
+  };
+  walk(tree);
+  assert.ok(hits.length >= 1, "应至少有一个可见面板");
+  // 面板是**嵌套**的：外层 {usage|conf} + conf 内层 5 个主标签。
+  // 取最深的那个才是"用户真正看到的这一屏"（外层在非 usage 标签下恒为 active）。
+  const isInside = (a, b) => {
+    let found = false;
+    const walk = (n) => {
+      if (found || !n || typeof n !== "object") return;
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      if (n.props) {
+        if (n === a) { found = true; return; }
+        walk(n.props.children);
+      }
+    };
+    walk(b.props.children);
+    return found;
+  };
+  const deepest = hits.filter((h) => !hits.some((o) => o !== h && isInside(o, h)));
+  assert.equal(deepest.length, 1, "应恰好有一个最内层可见面板，实际 " + deepest.length);
+  return deepest[0];
+}
+function visiblePanelText(tree) { return flatText(activePanelNode(tree)); }
+
+function gotoGateway() {
+  return async (opts) => {
+    const ctx = await setup(opts || {});
+    let tree = await renderTwice(ctx.panel, ctx.reset);
+    const btn = findClickable(tree, "oq-tab").filter((n) => collectText(n.props.children).join("") === "网关");
+    assert.ok(btn.length >= 1, "应存在「网关」标签按钮");
+    btn[0].props.onClick();
+    // 切 tab 后 effect 才会触发 refreshGateway（fetch 是 async）：
+    // 渲染一次让 effect 跑起来，等它落地，再渲染一次把 gwData 读进来。
+    ctx.reset(); ctx.panel();
+    await new Promise((r) => setTimeout(r, 20));
+    ctx.reset();
+    tree = ctx.panel();
+    return Object.assign({}, ctx, { tree, text: visiblePanelText(tree), fullText: flatText(tree) });
+  };
+}
+
+test("设置页渲染冒烟：「网关」是独立 tab，且不与「数据源」的凭据表单混排", async () => {
+  const g = await gotoGateway()({});
+  // 有自己的四张卡
+  for (const kw of ["监测网关用量", "数据源", "监测到的内容", "与本机的对照"]) {
+    assert.ok(g.text.includes(kw), "「网关」应有「" + kw + "」区块");
+  }
+  // 关键：它**不该**出现凭据表单的痕迹（那说明被误当成 provider 渲染了）
+  assert.ok(!g.text.includes("全部测试"), "「网关」不该有「全部测试」（那是凭据源的按钮）");
+  assert.ok(!g.text.includes("Base URL"), "「网关」不该有 Base URL 输入（网关没有凭据）");
+  // 只读声明必须写在开关旁边
+  assert.ok(g.text.includes("只读"), "必须明确写「只读」");
+  assert.ok(g.text.includes("UTC+8"), "必须标注日界口径");
+});
+
+test("设置页渲染冒烟：「网关」六种状态各说人话（含「账本在但没有网关流量」不是故障）", async () => {
+  const cases = [
+    ["ok", ["正常", "Jet Hub 账本", "2 天", "3 桶"]],
+    ["not-found", ["未找到 Jet Hub 账本", "已尝试的路径"]],
+    ["bad-schema", ["账本格式不认识", "some-other/v1"]],
+    ["bad-json", ["账本无法解析"]],
+    ["empty", ["账本里没有网关流量", "不是故障"]],
+  ];
+  for (const [kind, kws] of cases) {
+    const g = await gotoGateway()({
+      gatewayPayload: () => gatewayPayloadFor(kind),
+    });
+    for (const kw of kws) {
+      assert.ok(g.text.includes(kw), "状态 " + kind + " 应显示「" + kw + "」，实际：" + g.text.slice(0, 400));
+    }
+  }
+});
+
+test("设置页渲染冒烟：网关数据源路径只放 title，不把用户名铺在正文里过长", async () => {
+  const g = await gotoGateway()({});
+  const titles = collectTitles(g.tree).join(" | ");
+  assert.ok(titles.includes("token-ledger.json"), "完整路径应放在 title 里（悬停可见）");
+});
+
+test("设置页渲染冒烟：关掉网关监测 → 显示「仅本机」、下一次查询带 gw=0、且不再读对方账本", async () => {
+  const g = await gotoGateway()({ localStorageSeed: {} });
+  assert.ok(g.text.includes("未监测") === false, "默认应开启（默认值不落盘）");
+  // 默认开：主接口与网关端点都必须带 gw=1
+  assert.ok(g.calls.some((u) => u.includes("/api/token-meter") && u.includes("gw=1")), "默认应带 gw=1");
+  // 点开关：必须点**网关面板里**那一个（隐藏面板里还有侧栏入口/贴边收起等开关，
+  // 按 role=switch 全局取第一个会点错，进而假红"没写进 sources"）
+  const sw = findClickable(activePanelNode(g.tree), "").filter((n) => String(n.props.role || "") === "switch");
+  assert.ok(sw.length >= 1, "网关面板里应有开关");
+  g.calls.length = 0;
+  sw[0].props.onClick();
+  g.reset(); g.panel();
+  await new Promise((r) => setTimeout(r, 20));
+  // 落盘到 sources.gateway（不是 providers）
+  const saved = JSON.parse(g.store.opencode_quota_config || "{}");
+  assert.equal(saved.sources && saved.sources.gateway && saved.sources.gateway.enabled, false, "关闭必须写进 sources.gateway.enabled");
+  assert.ok(!(saved.providers && saved.providers.gateway), "不能写成 providers.gateway（那是凭据源）");
+  // 关掉后必须带 gw=0（宿主真的不读文件）
+  assert.ok(g.calls.some((u) => u.includes("gw=0")), "关闭后请求必须带 gw=0，实际：" + g.calls.join(" , "));
+});
+
+test("设置页渲染冒烟：总览里区分「其中网关」与「仅本机口径」", async () => {
+  // 开：显示「其中网关」+ 占比
+  const on = await setup({ localStorageSeed: { opencode_quota_range: "30d" } });
+  const tOn = flatText(await renderTwice(on.panel, on.reset));
+  assert.ok(tOn.includes("其中网关"), "开启时应显示「其中网关」");
+  assert.ok(tOn.includes("30%"), "6000/20000 = 30%，应显示占比，实际：" + tOn.slice(0, 200));
+  assert.ok(tOn.includes("UTC+8"), "应标注日界");
+
+  // 关：显示「仅本机口径」，且 host 侧 sources.gateway.enabled 为 false
+  const off = await setup({
+    localStorageSeed: { opencode_quota_range: "30d", opencode_quota_config: JSON.stringify({ providers: {}, sources: { gateway: { enabled: false } } }) },
+    fetchPayload: (range) => {
+      const p = payload(range);
+      p.sources = { gateway: { total: 0, requests: 0, available: true, enabled: false, error: null, detail: null, schema: null, dayCount: 0, bucketCount: 0, note: "UTC+8 日界" }, local: { total: 20000, requests: 33 } };
+      return p;
+    },
+  });
+  const tOff = flatText(await renderTwice(off.panel, off.reset));
+  assert.ok(tOff.includes("仅本机口径"), "关闭时应明确提示只含本机");
+  assert.ok(tOff.includes("网关"), "提示里要提到网关（告诉用户去哪儿开）");
+});
+
+test("设置页渲染冒烟：项目/会话/工具三张榜要注明「仅本机会话」（网关无此维度）", async () => {
+  // 排行 tab 的初值来自 localStorage["oq_rank_tab"]，用种子切档比点 pills 稳
+  // （"项目"/"工具"这类文字在明细表头、图表说明里也出现，按文本找按钮会点错）。
+  for (const [key, label] of [["projects", "项目"], ["sessions", "会话"], ["tools", "工具"]]) {
+    const { panel, reset } = await setup({
+      localStorageSeed: { opencode_quota_range: "30d", oq_rank_tab: key },
+    });
+    const t = flatText(await renderTwice(panel, reset));
+    const at = t.indexOf("排行");
+    assert.ok(at >= 0, "应有排行卡");
+    const seg = t.slice(at, at + 160);
+    assert.ok(seg.includes("仅本机会话") || seg.includes("网关流量无此维度"),
+      "「" + label + "」榜应注明网关无此维度；实际排行段：" + seg);
+  }
+  // 反向：模型/渠道两榜**不该**带这句（它们确实含网关）
+  for (const key of ["models", "providers"]) {
+    const { panel, reset } = await setup({
+      localStorageSeed: { opencode_quota_range: "30d", oq_rank_tab: key },
+    });
+    const t = flatText(await renderTwice(panel, reset));
+    assert.ok(!t.includes("仅本机会话"), "「" + key + "」榜含网关，不该说不含");
+  }
+});
+
+test("设置页渲染冒烟：tab 记忆落在白名单键上（在「网关」刷新不跳回「用量统计」）", async () => {
+  const g = await gotoGateway()({});
+  assert.equal(g.store.oq_settings_tab, "gateway", "切 tab 应写入 oq_settings_tab");
+});
+
+test("设置页渲染冒烟：旧 host 完全没有 sources 时，网关卡片与角标都不渲染且不崩", async () => {
+  const { panel, reset } = await setup({
+    fetchPayload: (range) => {
+      const p = payload(range);
+      delete p.sources;
+      return p;
+    },
+  });
+  const t = flatText(await renderTwice(panel, reset));
+  assert.ok(!t.includes("其中网关"), "没有 sources 时不该凭空造一个网关数字");
+  assert.ok(t.includes("总览"), "其余功能照常");
+});
+
+test("网关请求：不单独成行，也不作为独立胶囊文案出现在正文里", async () => {
+  // 真机反馈：260px 的悬浮窗里「请求 216」与「网关请求 216」各占一行——
+  // 只有网关流量的日子这两个数字恒相等，看起来像重复渲染的 bug，且把卡片撑高。
+  // 现在的口径：请求胶囊显示**合计**，网关分量只进 title。
+  const { panel, reset } = await setup({ localStorageSeed: { opencode_quota_range: "1d" } });
+  const t = flatText(await renderTwice(panel, reset));
+  assert.ok(t.includes("其中网关"), "总览应有「其中网关」，合计口径必须可解释");
+  assert.ok(!t.includes("网关请求"), "「网关请求」不该出现在任何面板正文里（应并入「请求」的 title）");
+});
+
+test("设置页渲染冒烟：网关请求数只出现在 title（悬停）而不是正文", async () => {
+  const { panel, reset } = await setup({ localStorageSeed: { opencode_quota_range: "30d" } });
+  const tree = await renderTwice(panel, reset);
+  const titles = collectTitles(tree).join(" | ");
+  assert.ok(titles.includes("网关") || titles.includes("UTC+8"), "网关口径应该在 tooltip 里可查");
+});
+
+test("悬浮窗结构：网关角标在第二行右侧，第一行只留「总量 + Live」（防再被挤）", () => {
+  // 真机反馈：260px 宽下「含网关 97.9%」和总量、Live 挤在同一行，Live 被挤出可视区。
+  // 这里锁的是**结构约束**，不是像素：靠源码里 gwBadgeEl 的调用位置判定。
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  const i = src.indexOf("function renderTmCompact");
+  const j = src.indexOf("function renderTmClassic");
+  const seg = src.slice(i, j);
+  const headStart = seg.indexOf("oq-tm-head");
+  const headEnd = seg.indexOf("第二行");
+  assert.ok(headStart > 0 && headEnd > headStart, "应能找到头部与「第二行」的分界注释");
+  const head = seg.slice(headStart, headEnd);
+  assert.ok(!head.includes("gwBadgeEl"), "头部（第一行）不得调用 gwBadgeEl —— 否则会把 Live 挤出可视区");
+  assert.ok(head.includes("Live"), "第一行必须保留 Live");
+  assert.ok(seg.slice(headEnd).includes("gwBadgeEl"), "网关角标应出现在第二行");
+});
+
+test("LIVE_JUDGE：网关正在被使用（账本刚被写）也要点亮 Live", async () => {
+  const mod = await loadClientModule({ requireStub: (n) => n === "react" ? makeReactStub().react : (n === "react/jsx-runtime" ? makeJsxStub() : null) });
+  const L = mod.__testing.LIVE_JUDGE;
+  const now = Date.now();
+  const mk = (gwMs) => ({ updatedAt: now, sources: { gateway: { enabled: true, lastActiveAt: gwMs, requests: 120, total: 1000 } } });
+  const idleLocal = { activeSteps: 0, activeTurns: 0, lastActiveAt: 0, rate60: 0, tokPerSec: 0 };
+
+  assert.equal(L(mk(now - 5000), idleLocal), true, "网关 5s 前刚写过 ⇒ Live 应亮（本机会话全 0）");
+  assert.equal(L(mk(now - 25000), idleLocal), false, "网关 25s 没动静 ⇒ 不再算活跃");
+  assert.equal(L(mk(0), idleLocal), false, "没有网关活动时刻（未安装/未解析）⇒ 不亮");
+  // 关掉监测后宿主下发 0，所以上面 mk(0) 已覆盖；再显式防一手"关闭但仍带时刻"
+  assert.equal(L({ updatedAt: now, sources: { gateway: { enabled: false, lastActiveAt: now - 1000, requests: 1 } } }, idleLocal),
+    false, "关闭监测后即使带了活动时刻也不能亮");
+});
+
+test("网关角标：显示实际 token 数 + 朝上小三角（方案 B），且不再出现「含网关」", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  // 正文必须是「网关 + 数值」，不再是百分数（用户要求：改成数值更直接）
+  assert.ok(src.includes('children:"网关"'),
+    "角标标签应为「网关」");
+  assert.ok(src.includes("fmtTokens(gt)"),
+    "角标值应为网关的 token 数（fmtTokens(gt)），而不是 pct");
+  assert.ok(!src.includes('"含网关 "'),
+    "不得再出现「含网关」文案");
+  // 朝上三角：border 三边透明 + 上边框实色，是 CSS 三角的标准写法
+  assert.ok(src.includes("borderBottom:\"4px solid rgba(139,123,255,0.42)\""),
+    "应有朝上的 CSS 三角（borderBottom 实色 + 左右透明）");
+  // 三角在胶囊**左侧**（用户要求"三角靠左"）：落在「网关」二字附近，
+  // 读起来是「↑ 网关」，与上方总量的关联由垂直方向承担，不再依赖
+  // 横向像素级对齐（上一版为对齐右侧 Live 徽标要算 16px 偏移，很脆）。
+  assert.ok(src.includes("top:-4,left:6"),
+    "三角应在胶囊顶部（top 负值）且靠左（left 定位，不是 right）");
+  assert.ok(!src.includes("top:-4,right:"),
+    "不应再回到 right 定位（那会挂到胶囊右端，与「网关」二字脱开）");
+});
+
+test("Live 三态：文字恒为 Live，只靠颜色区分（用户要求）", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  const l = (s, m) => (s.match(m) || [])[0];
+  // 三态的 text 必须都是 Live
+  const styleBlock = src.slice(src.indexOf("var LIVE_STYLE = {"), src.indexOf("};", src.indexOf("var LIVE_STYLE = {")));
+  const texts = [...styleBlock.matchAll(/text:"([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(texts, ["Live", "Live", "Live"],
+    "三态的文字必须都是 Live —— 换成「网关」会让状态看起来像标签/入口");
+  // 颜色必须三者互不相同（否则"只靠颜色区分"就不成立）
+  const colors = [...styleBlock.matchAll(/color:"(#[0-9a-fA-F]{6})"/g)].map((m) => m[1].toLowerCase());
+  assert.equal(new Set(colors).size, 3, "三态颜色必须互不相同，实际 " + colors.join(","));
+  // 网关态刻意避开紫色：紫色是网关「量」的用色（胶囊），状态点再用紫会撞色
+  assert.ok(!colors.includes("#8b7bff"),
+    "网关态的 Live 不能用 #8b7bff —— 那是网关角标的颜色，会分不清哪个在 pulse");
+});
+
+test("LIVE_CHANNEL：直连 / 网关 / 两者 三态各自可辨，且与 LIVE_JUDGE 同源", async () => {
+  const mod = await loadClientModule({ requireStub: (n) => n === "react" ? makeReactStub().react : (n === "react/jsx-runtime" ? makeJsxStub() : null) });
+  const C = mod.__testing.LIVE_CHANNEL;
+  const J = mod.__testing.LIVE_JUDGE;
+  assert.equal(typeof C, "function", "LIVE_CHANNEL 应导出到 __testing");
+  const now = Date.now();
+  const idle = { activeSteps: 0, activeTurns: 0, lastActiveAt: 0, rate60: 0, tokPerSec: 0 };
+  const busy = { activeSteps: 0, activeTurns: 1, lastActiveAt: now, rate60: 0, tokPerSec: 0 };
+  const mk = (gwMs, gwOn = true) => ({ updatedAt: now, sources: { gateway: { enabled: gwOn, lastActiveAt: gwMs, requests: 10, total: 100 } } });
+
+  // 只有直连
+  assert.equal(C(mk(0), busy), "direct");
+  // 只有网关（本机会话全 0，网关刚写过）
+  assert.equal(C(mk(now - 3000), idle), "gateway");
+  // 两者同时在跑
+  assert.equal(C(mk(now - 3000), busy), "both");
+  // 都没动静
+  assert.equal(C(mk(0), idle), null);
+  // 网关窗口过期
+  assert.equal(C(mk(now - 25000), idle), null);
+  // 关掉监测后即使带时刻也不算网关活动
+  assert.equal(C(mk(now - 1000, false), idle), null);
+
+  // 「同源」不变量：只要 LIVE_CHANNEL 判出非 null，LIVE_JUDGE 必须也为 true
+  for (const [gw, lv] of [[0, busy], [now - 3000, idle], [now - 3000, busy], [now - 25000, idle]]) {
+    const kind = C(mk(gw), lv);
+    const live = J(mk(gw), lv);
+    if (kind) assert.equal(live, true, "徽标亮着时 LIVE_JUDGE 必须为 true（否则会出现说不清的态）");
   }
 });

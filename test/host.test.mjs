@@ -4,6 +4,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import * as fs from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { __testing as T } from "../lib/index.js";
 
@@ -1676,3 +1679,411 @@ test("resetUsage 清空账本时也要把 lastActiveAt 归零（否则界面 Liv
   assert.equal(T.usage.live.stepStart.size, 0);
 });
 
+// ===== 网关账本叠加（dsh-providers-hub 的 jet-hub/token-ledger.json）=====
+// 背景：网关请求不建会话，本地三条摄入通路都看不见它；实测某日它占全机 token 的 52%，
+// 小窗只显示本机那一半。这里锁的是"只读叠加"的几个致命点，尤其是**绝不能双计**。
+
+/** 造一份符合对方 v2 schema 的账本文档 */
+function gwDoc(daysSpec, schema = "dsh-codearts-auth/token-ledger/v2") {
+  const days = {};
+  for (const [day, buckets] of Object.entries(daysSpec)) {
+    days[day] = {};
+    for (const [key, b] of Object.entries(buckets)) {
+      days[day][key] = Object.assign({
+        requests: 1, reportedRequests: 1, inputTokens: 0, outputTokens: 0,
+        cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, errors: 0,
+        ttftSumMs: 0, ttftCount: 0, tpsSum: 0, tpsCount: 0, tpsHistogram: {},
+      }, b);
+    }
+  }
+  return { schema, days };
+}
+
+/** 把一份文档灌进网关内存容器（走真实的归一化路径），返回归一化结果 */
+function loadGateway(doc) {
+  const n = T.normalizeJetHubLedger(doc);
+  T.clearGatewayState();
+  if (n.ok) {
+    Object.assign(T.gateway, {
+      ok: true, error: null, detail: null, schema: n.schema,
+      path: "<test>", mtimeMs: 1, size: 1, loadedAt: Date.now(),
+      dayCount: n.perDay.size, bucketCount: n.bucketCount,
+      firstDay: n.firstDay, lastDay: n.lastDay,
+      perDay: n.perDay, perModel: n.perModel, perProvider: n.perProvider,
+    });
+  }
+  return n;
+}
+
+test("normalizeJetHubLedger：只收 gateway 桶，direct 必须丢弃（双计是静默且看起来合理的那种错）", () => {
+  const today = T.dayKeyOf(Date.now());
+  const n = T.normalizeJetHubLedger(gwDoc({
+    [today]: {
+      // 同一账号同一模型，网关与直连各一笔：直连那一半和本插件自己的库重复
+      [`gateway|buddy|buddy-aaa|deepseek-v4.1-flash`]: { requests: 3, inputTokens: 100, outputTokens: 10, cacheReadTokens: 1000 },
+      [`direct|buddy|buddy-aaa|deepseek-v4.1-flash`]: { requests: 7, inputTokens: 999, outputTokens: 99, cacheReadTokens: 9999 },
+    },
+  }));
+  assert.equal(n.ok, true);
+  assert.equal(n.bucketCount, 1, "只有 gateway 桶被收");
+  const agg = n.perDay.get(today);
+  assert.equal(agg.requests, 3, "requests 不能被 direct 抬到 10");
+  assert.equal(agg.input, 100);
+  assert.equal(agg.output, 10);
+  assert.equal(agg.cacheRead, 1000, "缓存读必须单独留存，不能并进 total 丢掉");
+  // agg.total 沿用本插件既有口径 = input + output（不含 cacheRead）；
+  // 对外总量在 computeUsage 里算 prompt(input+cacheRead) + output，别在这里另立口径。
+  assert.equal(agg.total, 110);
+});
+
+test("normalizeJetHubLedger：不认识 schema / 坏结构 / 坏 JSON 都要 fail-soft，绝不抛错", () => {
+  assert.equal(T.normalizeJetHubLedger(null).ok, false);
+  assert.equal(T.normalizeJetHubLedger([]).ok, false);
+  assert.equal(T.normalizeJetHubLedger({}).ok, false);
+  const bad1 = T.normalizeJetHubLedger({ schema: "some-other/v1", days: {} });
+  assert.equal(bad1.ok, false);
+  assert.equal(bad1.error, "bad-schema");
+  assert.equal(bad1.detail, "some-other/v1", "要把读到的 schema 原文报出来，否则排障无从下手");
+  const bad2 = T.normalizeJetHubLedger({ schema: "dsh-codearts-auth/token-ledger/v9", days: [] });
+  assert.equal(bad2.ok, false, "days 是数组 = 结构不对");
+  // 前缀匹配：v3 若结构不变仍应可读
+  const v3 = T.normalizeJetHubLedger({ schema: "dsh-codearts-auth/token-ledger/v3", days: {} });
+  assert.equal(v3.ok, true);
+});
+
+test("normalizeJetHubLedger：数值钳制 + 段数校验 + 含 / 的模型名不被误拆", () => {
+  const today = T.dayKeyOf(Date.now());
+  const n = T.normalizeJetHubLedger(gwDoc({
+    [today]: {
+      [`gateway|vendor|acc|org/model-x`]: { requests: "abc", inputTokens: -5, outputTokens: 10, cacheReadTokens: NaN },
+      [`gateway|short|acc`]: { requests: 9, inputTokens: 9, outputTokens: 9 },   // 3 段 → 整桶丢弃
+      [`gateway|vendor2|acc|m2`]: { requests: 2, inputTokens: "12", outputTokens: 3.9 },
+    },
+  }));
+  assert.equal(n.bucketCount, 2, "3 段的桶必须整桶丢弃");
+  const agg = n.perDay.get(today);
+  assert.equal(agg.requests, 2, "requests=NaN 归 0，3 段桶的 9 次不能混进来");
+  assert.equal(agg.input, 12, "负数归 0、字符串数字照常解析、小数截断");
+  assert.equal(agg.output, 3 + 10, "10 来自 org/model-x 那条");
+  const models = [...n.perModel.get(today).keys()];
+  assert.ok(models.includes("org/model-x"), "模型名含 / 是正常的（对方把 | 转义成 /）");
+});
+
+test("computeUsage：网关与本机同名模型/渠道相加，且网关独有的天也进 daily[]", () => {
+  T.resetUsage();
+  const today = T.dayKeyOf(Date.now());
+  const yesterday = dayKeyAt(1);
+  // 本机：今天 buddy 一笔
+  T.usage.perDay.set(today, Object.assign(T.emptyAgg(), { requests: 1, input: 100, output: 10, cacheRead: 0, total: 110 }));
+  T.usage.perModel.set("deepseek-v4.1-flash", new Map([[today, Object.assign(T.emptyAgg(), { requests: 1, input: 100, output: 10, total: 110 })]]));
+  T.usage.perProviderDay.set("buddy", new Map([[today, Object.assign(T.emptyAgg(), { requests: 1, input: 100, output: 10, total: 110 })]]));
+  // 网关：今天 buddy 同名模型 + 昨天只有网关（本机昨天没对话）
+  loadGateway(gwDoc({
+    [today]: { [`gateway|buddy|a|deepseek-v4.1-flash`]: { requests: 2, inputTokens: 50, outputTokens: 5, cacheReadTokens: 500 } },
+    [yesterday]: { [`gateway|trae|b|kimi-k2.8-preview`]: { requests: 4, inputTokens: 70, outputTokens: 7, cacheReadTokens: 0 } },
+  }));
+  const s = T.computeUsage("7d");
+  assert.equal(s.totals.requests, 1 + 2 + 4, "请求数 = 本机 1 + 网关 2 + 4");
+  assert.equal(s.totals.total, 110 + (50 + 5 + 500) + (70 + 7), "总量含网关");
+
+  const flash = s.models.find((m) => m.model === "deepseek-v4.1-flash");
+  assert.equal(flash.requests, 3, "同名模型合成一行（1 本机 + 2 网关）");
+  assert.equal(flash.total, 110 + 555);
+  assert.ok(s.models.some((m) => m.model === "kimi-k2.8-preview"), "只在网关出现过的模型也要上榜");
+
+  const buddy = s.providers.find((p) => p.provider === "buddy");
+  assert.equal(buddy.requests, 3, "同名渠道相加");
+  assert.ok(s.providers.some((p) => p.provider === "trae"), "只在网关出现过的渠道也要上榜");
+
+  assert.ok(s.daily.some((d) => d.date === yesterday), "网关独有的天不能整天消失（本机当天没对话）");
+  const yRow = s.daily.find((d) => d.date === yesterday);
+  assert.equal(yRow.total, 77);
+  assert.equal(yRow.topProject, "", "网关没有项目维度");
+  assert.equal(yRow.avgMs, null, "网关没有耗时样本");
+  // 回归：gatewayViewFor().perModel 是 model→agg（跨天合并），拿 day 去查永远查不到，
+  // 会让纯网关天的 models[] 恒为空 ⇒ 明细表"主要模型"与热力图 tooltip 都没字。
+  assert.deepEqual(yRow.models, [{ model: "kimi-k2.8-preview", total: 77 }], "纯网关天也要有当日模型");
+
+  assert.equal(s.sources.gateway.total, 555 + 77);
+  assert.equal(s.sources.local.total, 110, "local 恒为不含网关");
+  assert.equal(s.sources.gateway.available, true);
+  T.resetUsage();
+  T.clearGatewayState();
+});
+
+test("computeUsage：localOnly 与 gateway:false 都必须排除网关（补录预览 / 关掉监测）", () => {
+  T.resetUsage();
+  const today = T.dayKeyOf(Date.now());
+  T.usage.perDay.set(today, Object.assign(T.emptyAgg(), { requests: 1, input: 100, output: 10, total: 110 }));
+  loadGateway(gwDoc({
+    [today]: { [`gateway|buddy|a|m`]: { requests: 2, inputTokens: 50, outputTokens: 5 } },
+  }));
+  assert.equal(T.computeUsage("7d").totals.total, 110 + 55);
+  assert.equal(T.computeUsage("7d", { localOnly: true }).totals.total, 110, "补录预览比的是本插件账本");
+  assert.equal(T.computeUsage("7d", { gateway: false }).totals.total, 110, "关掉监测必须真的不合并");
+  assert.equal(T.computeUsage("7d", { localOnly: true }).sources.gateway.total, 0);
+  T.resetUsage();
+  T.clearGatewayState();
+});
+
+test("clearGatewayState：关掉监测后内存里不能再留数（否则'关了还在读'就是欺骗）", () => {
+  const today = T.dayKeyOf(Date.now());
+  loadGateway(gwDoc({ [today]: { [`gateway|b|a|m`]: { requests: 1, inputTokens: 5 } } }));
+  assert.equal(T.gateway.ok, true);
+  assert.ok(T.gateway.dayCount > 0);
+  T.clearGatewayState();
+  assert.equal(T.gateway.ok, false);
+  assert.equal(T.gateway.dayCount, 0);
+  assert.equal(T.gateway.bucketCount, 0);
+  assert.equal(T.gateway.perDay.size, 0);
+  assert.equal(T.gateway.perModel.size, 0);
+  assert.equal(T.gateway.perProvider.size, 0);
+});
+
+test("网关账本：真实读写 + mtime/size 缓存 + 未安装时 available:false 而不是抛错", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const home = mkdtempSync(join(tmpdir(), "oq-gw-"));
+  const dir = join(home, "jet-hub");
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, "token-ledger.json");
+  const today = T.dayKeyOf(Date.now());
+
+  // 1) 文件不存在 → not-found（这是"没装对方插件"的正常状态）
+  let g = T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  assert.equal(g.ok, false);
+  assert.equal(g.error, "not-found");
+  assert.ok(g.triedPaths.length >= 1, "未找到时要给出试过的路径，否则排障无从下手");
+
+  // 2) 写入合法账本 → 读到网关桶
+  writeFileSync(file, JSON.stringify(gwDoc({
+    [today]: { [`gateway|buddy|a|m`]: { requests: 2, inputTokens: 30, outputTokens: 3 } },
+  })), "utf-8");
+  g = T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  assert.equal(g.ok, true);
+  assert.equal(g.schema, "dsh-codearts-auth/token-ledger/v2");
+  assert.equal(g.bucketCount, 1);
+  assert.equal(g.path, file);
+
+  // 3) 未变 + 不 force → 走缓存（把文件内容换成脏 JSON 也不会被重新解析）
+  writeFileSync(file, "{ 这不是 JSON", "utf-8");
+  const cached = T.refreshGatewayLedger({ get: () => undefined }, quiet, { candidates: [home] });
+  assert.equal(cached.ok, true, "mtime/size 未变时应命中缓存，不重新解析");
+  assert.equal(cached.bucketCount, 1);
+
+  // 4) force 强制重读 → 解析失败，但保留上一份成功数据
+  const broken = T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  assert.equal(broken.ok, false);
+  assert.equal(broken.error, "bad-json");
+  assert.equal(broken.dayCount, 1, "解析失败不得清空上一份成功数据");
+
+  T.clearGatewayState();
+  rmSync(home, { recursive: true, force: true });
+});
+
+test("gatewayDayToLocalDay：本机 +8 时恒等；其它时区不能抛错且落在相邻日", () => {
+  const tz = process.env.TZ;
+  // 本机 +8：恒等（这是最容易验证也最关键的一条）
+  const local = new Date().getTimezoneOffset();   // 分钟，东八区为 -480
+  const mapped = T.gatewayDayToLocalDay("2026-10-27");
+  if (local === -480) assert.equal(mapped, "2026-10-27", "+8 机器上必须恒等");
+  else assert.ok(/^2026-10-2[678]$/.test(mapped), "非 +8 时区应落在相邻日，实际 " + mapped);
+  // 非法输入不能抛
+  assert.equal(typeof T.gatewayDayToLocalDay("garbage"), "string");
+  assert.equal(T.gatewayDayToLocalDay(""), "");
+  if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz;
+});
+
+test("gatewayReport：只回聚合，绝不泄露桶键里的 accountId", () => {
+  const today = T.dayKeyOf(Date.now());
+  loadGateway(gwDoc({
+    [today]: { [`gateway|buddy|buddy-SECRET-acct|m1`]: { requests: 2, inputTokens: 30, outputTokens: 3 } },
+  }));
+  const r = T.gatewayReport(T.gateway, false);
+  const text = JSON.stringify(r);
+  assert.ok(!text.includes("buddy-SECRET-acct"), "账号 id 不得出现在响应里");
+  assert.ok(text.includes("buddy"), "但 provider 名要保留（它不含隐私）");
+  assert.equal(r.days.length, 1);
+  assert.equal(r.empty, false);
+  T.clearGatewayState();
+});
+
+test("gatewayReport：账本存在但只有 direct 桶 ⇒ empty:true（与'未安装'必须区分）", () => {
+  const today = T.dayKeyOf(Date.now());
+  loadGateway(gwDoc({
+    [today]: { [`direct|buddy|a|m`]: { requests: 9, inputTokens: 99 } },
+  }));
+  assert.equal(T.gateway.ok, true, "文件本身是可读的");
+  const r = T.gatewayReport(T.gateway, false);
+  assert.equal(r.available, true);
+  assert.equal(r.empty, true, "没有 gateway 桶是正常状态，不能报错、也不能显示成'正常 · 0'");
+  assert.equal(r.bucketCount, 0);
+  T.clearGatewayState();
+});
+
+
+// ===== Live 判据：step/start 从不投递时的兜底（2026-10-28 真机缺陷）=====
+// 用户实测"对话中不显示 Live"。查库发现当前 DSH 宿主**从不投递 step/start**
+// （某天 16 次回复 / 18 条 step/end，step/start 零条）⇒ activeSteps 恒 0。
+// 同时 chunk 类事件在 ingestEvent 里直接 return 且不 bumpUsage ⇒ version 不动 ⇒
+// 客户端跳过 setState。两处一起导致 Live 在流式期间永远不亮。
+
+test("live：turn/start 之后即使没有 step/start，也要报告 activeTurns>0", () => {
+  T.resetUsage();
+  T.liveSeqs.clear(); T.seenSeq.clear();
+  const now = Date.now();
+  T.ingestEvent("s-live", { type: "turn/start", time: now, seq: 1, data: {} });
+  const live = T.computeUsage("1d").live;
+  assert.equal(live.activeSteps, 0, "step/start 不投递时 activeSteps 就是 0（这是宿主现状）");
+  assert.equal(live.activeTurns, 1, "turn/start 必须让 activeTurns 变成 1 —— 否则 Live 永不亮");
+});
+
+test("live：turn/end 关掉轮次区间", () => {
+  T.resetUsage();
+  T.liveSeqs.clear(); T.seenSeq.clear();
+  const now = Date.now();
+  T.ingestEvent("s-live", { type: "turn/start", time: now - 1000, seq: 1, data: {} });
+  assert.equal(T.computeUsage("1d").live.activeTurns, 1);
+  T.ingestEvent("s-live", { type: "turn/end", time: now, seq: 2, data: {} });
+  assert.equal(T.computeUsage("1d").live.activeTurns, 0, "turn/end 之后不该还显示进行中");
+});
+
+test("live：turn/end 缺失时靠 TTL 过期（不能永久显示'进行中'）", () => {
+  T.resetUsage();
+  T.liveSeqs.clear(); T.seenSeq.clear();
+  const now = Date.now();
+  // 4 分钟前开的一轮，之后再无事件 ⇒ 超过 3 分钟 TTL
+  T.ingestEvent("s-stale", { type: "turn/start", time: now - 240000, seq: 1, data: {} });
+  assert.equal(T.computeUsage("1d").live.activeTurns, 0, "过期轮次必须自行失效");
+});
+
+test("live：chunk 类事件必须 bump version（否则客户端跳过重渲染，Live 不亮）", () => {
+  T.resetUsage();
+  T.liveSeqs.clear(); T.seenSeq.clear();
+  const now = Date.now();
+  T.ingestEvent("s-chunk", { type: "turn/start", time: now - 1000, seq: 1, data: {} });
+  const v0 = T.usage.version;
+  T.ingestEvent("s-chunk", { type: "assistant/chunk", time: now, seq: 2, data: { turn: 0, step: 0 } });
+  assert.ok(T.usage.version > v0,
+    "流式期间 chunk 是唯一的 version 来源；不 bump 就会出现'对话中界面不动、Live 不亮'");
+});
+
+test("live：回填路径（live:false）不制造进行中轮次", () => {
+  T.resetUsage();
+  T.liveSeqs.clear(); T.seenSeq.clear();
+  const now = Date.now();
+  T.ingestEvent("s-back", { type: "turn/start", time: now, seq: 1, data: {} }, { live: false });
+  assert.equal(T.computeUsage("1d").live.activeTurns, 0,
+    "历史回填不能把几百个 turn/start 变成'几百个正在回复'");
+});
+
+// ===== 网关活动 ⇒ Live =====
+// 外部客户端经网关发请求时，本机会话一个事件都没有，宿主侧唯一可见的痕迹是
+// 对方的 token-ledger.json 里**网关请求数增长**。
+//
+// ⚠️ 真机缺陷（2026-10-28 用户报障「我没走网关，Live 却显示两者同时」）：
+// 原实现用文件 mtime 当活动时刻，而对方**空闲时也周期性重写**同一个文件
+// （实测 12s 内 mtime 变 16 次、内容 SHA 零变化）⇒ Live 恒亮。
+// 现在只认「网关请求计数增长」，下面三条用例把这个语义钉死。
+
+/** 造一份账本并写进临时 home，返回 {home, file, dir} */
+function makeGwHome(requests, day) {
+  const { mkdtempSync, writeFileSync } = fs;
+  const dir = mkdtempSync(join(tmpdir(), "gw-act-"));
+  const home = join(dir, "h");
+  fs.mkdirSync(join(home, "jet-hub"), { recursive: true });
+  const file = join(home, "jet-hub", "token-ledger.json");
+  writeFileSync(file, JSON.stringify({
+    schema: "dsh-codearts-auth/token-ledger/v2",
+    days: { [day]: { ["gateway|buddy|a|m"]: { requests, inputTokens: 10, outputTokens: 1, cacheReadTokens: 0 } } },
+  }), "utf-8");
+  return { home, file, dir };
+}
+
+test("网关活动：文件被重写但计数没涨 ⇒ 不算活动（mtime 不可信，真机缺陷回归）", () => {
+  const { mkdtempSync, utimesSync, rmSync } = fs;
+  const day = T.dayKeyOf(Date.now());
+  const { home, file, dir } = makeGwHome(7, day);
+  T.clearGatewayState();
+  const quiet = { info() {}, warn() {} };
+
+  // 第一次读：只建基线，不算活动
+  T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  assert.equal(T.gateway.lastChangeAt, 0,
+    "首次读取只建立基线，不能把历史存量当成'刚刚有流量'（否则启动时 Live 凭空亮一次）");
+
+  // 把 mtime 推到"现在"，但内容一字不改 —— 模拟对方空闲重写
+  const nowSec = Date.now() / 1000;
+  utimesSync(file, nowSec, nowSec);
+  T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  assert.equal(T.gateway.lastChangeAt, 0,
+    "mtime 变了但网关计数没涨 ⇒ 不能算活动。这正是用户报障的成因（Live 常亮成'两者同时'）");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("网关活动：计数增长 ⇒ 记为活动（真实网关流量的唯一信号）", () => {
+  const { writeFileSync, rmSync } = fs;
+  const day = T.dayKeyOf(Date.now());
+  const { home, file, dir } = makeGwHome(7, day);
+  T.clearGatewayState();
+  const quiet = { info() {}, warn() {} };
+
+  T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  assert.equal(T.gateway.lastChangeAt, 0);
+
+  // 请求数 7 → 9：真的多了两笔
+  writeFileSync(file, JSON.stringify({
+    schema: "dsh-codearts-auth/token-ledger/v2",
+    days: { [day]: { ["gateway|buddy|a|m"]: { requests: 9, inputTokens: 20, outputTokens: 2, cacheReadTokens: 0 } } },
+  }), "utf-8");
+  const before = Date.now();
+  T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  assert.ok(T.gateway.lastChangeAt >= before,
+    "计数增长必须刷新活动时刻（这是 Live 在'只有网关在跑'时能亮的唯一依据）");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("网关活动：计数**减少**（用户删了某天历史）不算活动", () => {
+  const { writeFileSync, rmSync } = fs;
+  const day = T.dayKeyOf(Date.now());
+  const { home, file, dir } = makeGwHome(20, day);
+  T.clearGatewayState();
+  const quiet = { info() {}, warn() {} };
+  T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  const baseline = T.gateway.lastChangeAt;
+
+  writeFileSync(file, JSON.stringify({
+    schema: "dsh-codearts-auth/token-ledger/v2",
+    days: { [day]: { ["gateway|buddy|a|m"]: { requests: 3, inputTokens: 5, outputTokens: 1, cacheReadTokens: 0 } } },
+  }), "utf-8");
+  T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  assert.equal(T.gateway.lastChangeAt, baseline,
+    "计数下降是'删除历史'，不是'正在被调用'，不能点亮 Live");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("网关活动：lastActiveAt 随 sources 下发，关闭监测时归 0", () => {
+  const day = T.dayKeyOf(Date.now());
+  loadGateway(gwDoc({
+    [day]: { ["gateway|buddy|a|m"]: { requests: 5, inputTokens: 50, outputTokens: 5 } },
+  }));
+  T.gateway.lastChangeAt = Date.now();
+  assert.ok(T.computeUsage("1d").sources.gateway.lastActiveAt > 0, "开启时应下发活动时刻");
+  assert.equal(T.computeUsage("1d", { gateway: false }).sources.gateway.lastActiveAt, 0,
+    "关掉监测后不得再下发活动时刻（否则 Live 会凭空亮）");
+});
+
+test("网关活动：clearGatewayState 清掉活动时刻与计数基线（关掉监测后不留痕）", () => {
+  const { rmSync } = fs;
+  const day = T.dayKeyOf(Date.now());
+  const { home, dir } = makeGwHome(5, day);
+  T.clearGatewayState();
+  const quiet = { info() {}, warn() {} };
+  T.refreshGatewayLedger({ get: () => undefined }, quiet, { force: true, candidates: [home] });
+  T.gateway.lastChangeAt = Date.now();   // 伪造一次活动
+  T.clearGatewayState();
+  assert.equal(T.gateway.lastChangeAt, 0, "关闭监测后不得残留活动时刻（否则重开瞬间 Live 凭空亮）");
+  assert.equal(T.computeUsage("1d").sources.gateway.lastActiveAt, 0);
+  rmSync(dir, { recursive: true, force: true });
+});
