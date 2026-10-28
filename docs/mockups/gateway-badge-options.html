@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>网关角标 · 四种方案对比</title>
+<style>
+  :root{
+    --bg:#0f0f14;
+    --card:#1a1a1f;
+    --card2:#1e1e26;
+    --line:rgba(255,255,255,.08);
+    --txt:#f5f5f7;
+    --dim:#a0a0b0;
+    --cap:#7a7a8a;
+    --accent:#8b7bff;
+    --c1:#6b87d9;   /* 输入 */
+    --c2:#b08427;   /* 输出 */
+    --c3:#c65f7f;   /* 缓存 */
+    --ok:#10b981;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:40px 28px 80px;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:22px;font-weight:750;letter-spacing:-.4px;margin:0 0 6px}
+  .sub{font-size:13px;color:var(--dim);line-height:1.7;margin:0 0 8px;max-width:760px}
+  .diag{
+    font-size:12px;color:#e8b463;background:rgba(232,180,99,.08);border:1px solid rgba(232,180,99,.25);
+    border-radius:8px;padding:10px 14px;margin:16px 0 34px;line-height:1.75}
+  .diag b{color:#f0c070}
+
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:30px 34px}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+
+  .opt{display:flex;flex-direction:column;gap:12px}
+  .opt-hd{display:flex;align-items:baseline;gap:9px}
+  .tag{
+    font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:5px;
+    background:rgba(139,123,255,.16);color:#a89bff;border:1px solid rgba(139,123,255,.3);
+    font-family:"Cascadia Code",Consolas,monospace}
+  .opt-name{font-size:14px;font-weight:700}
+  .opt-why{font-size:11.5px;color:var(--cap);line-height:1.65}
+  .verdict{font-size:11px;margin-top:2px}
+  .verdict b{color:#a89bff}
+  .pro{color:#4ade80}
+  .con{color:#f59e0b}
+
+  /* ===== 真实悬浮窗（260px，与 lib/client.js 同宽同色） ===== */
+  .stage{
+    background:linear-gradient(160deg,#14141a,#0c0c11);
+    border:1px solid var(--line);border-radius:14px;
+    padding:22px 16px;display:flex;justify-content:center;align-items:flex-start;
+    min-height:250px;
+  }
+  .card{
+    width:260px;border-radius:14px;background:var(--card);
+    border:1px solid var(--line);padding:9px 10px 10px;
+    display:flex;flex-direction:column;gap:6px;
+  }
+  .head{display:flex;align-items:center;gap:8px;height:40px}
+  .ring{position:relative;width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center}
+  .ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+  .ring b{font-size:11px;font-weight:800;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+  .headmid{display:flex;flex-direction:column;justify-content:center;gap:3px;flex:1;min-width:0}
+  .row1{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+  .row2{display:flex;align-items:center;gap:6px;min-width:0}
+  .lbl{font-size:11px;font-weight:600;color:var(--c3);white-space:nowrap}
+  .total{font-size:11px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .model{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;min-width:0}
+  .dot7{width:7px;height:7px;border-radius:50%;background:var(--c1);flex:none}
+  .live{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;color:var(--ok);white-space:nowrap;flex:none}
+  .live i{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  .tabs{display:flex;gap:4px;margin-top:4px}
+  .tab{flex:1;padding:3px 0;font-size:10px;font-weight:500;text-align:center;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+  .tab.on{font-weight:700;border-color:rgba(109,91,255,.45);background:rgba(109,91,255,.14);color:#8b7bff}
+
+  .heat{display:flex;gap:3px;justify-content:center;margin:4px 0}
+  .heat i{display:block;width:9px;height:16px;border-radius:3px;background:rgba(109,91,255,.2)}
+  .heat i.l1{background:rgba(109,91,255,.42)}
+  .heat i.l2{background:rgba(109,91,255,.72)}
+  .heat i.l3{background:#b3aaff}
+
+  .tile{background:var(--card2);border-radius:8px;padding:5px 7px;display:flex;flex-direction:column;gap:4px;margin-top:2px}
+  .kv{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:11px;font-weight:700}
+  .kv .a{color:var(--c1)} .kv .b{color:var(--c2);text-align:center} .kv .c{color:var(--c3);text-align:right}
+  .pills{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr) minmax(0,1.1fr);gap:4px;margin-top:3px}
+  .pill{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:1px 4px;border-radius:999px;
+    background:#242433;border:1px solid rgba(255,255,255,.06);font-size:10px;line-height:1.2;white-space:nowrap;overflow:hidden}
+  .pill span{color:var(--dim);font-weight:500;flex:none}
+  .pill b{font-weight:700;overflow:hidden;text-overflow:ellipsis}
+  .pills2{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr) minmax(0,1.1fr);gap:4px;margin-top:3px}
+
+  /* 方案 A：角标挪到第一行下方，独占一行小字 */
+  .gwline{
+    display:flex;align-items:center;gap:5px;font-size:9.5px;line-height:1.35;
+    color:#8b7bff;margin-top:1px;white-space:nowrap;overflow:hidden;
+  }
+  .gwline em{font-style:normal;color:var(--cap);font-weight:500}
+  .gwbar{display:inline-flex;height:4px;border-radius:2px;overflow:hidden;flex:none;width:44px;background:rgba(255,255,255,.08)}
+  .gwbar i{display:block;height:100%;background:linear-gradient(90deg,#8b7bff,#6d5bff)}
+
+  /* 方案 B：合并进总量，改成 "总量 · 网关 xx%" */
+  .totalgrp{display:inline-flex;align-items:baseline;gap:5px;flex:none}
+  .totsep{color:var(--cap);font-size:9px}
+  .totgw{font-size:9px;font-weight:700;color:#8b7bff}
+
+  /* 方案 C：角标降级成色点，语义交给 title / 详情 */
+  .gwdot{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:#8b7bff;flex:none}
+  .gwdot i{width:5px;height:5px;border-radius:50%;background:#8b7bff;display:inline-block}
+
+  /* 方案 D：输入/输出/缓存 那一行加"网关分量"小标 */
+  .kv .gwfrac{font-size:9px;font-weight:600;color:rgba(139,123,255,.85);white-space:nowrap}
+
+  .legend{margin-top:44px;border-top:1px solid var(--line);padding-top:20px;font-size:12px;color:var(--dim);line-height:2}
+  .legend b{color:var(--txt)}
+  .legend code{font-family:"Cascadia Code",Consolas,monospace;background:#242433;padding:1px 5px;border-radius:4px;font-size:11px;color:#a89bff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>「网关 97.8%」角标的四种排布方案</h1>
+  <p class="sub">当前问题：角标贴在第二行右侧、紧挨着榜首模型名，读者第一眼会把它读成「deepseek-v4.1-flash 的 97.8%」，而不是「总量里网关占 97.8%」。下面四版按 260px 真实宽度制作，可直接比。</p>
+
+  <div class="diag">
+    <b>诊断</b>：混淆来自三个因素叠加 —— ① 同一行左右并置，视觉上默认「同行即同主语」；<br>
+    ② 模型名已经带了一个百分数（98%），紧接着又一个百分数，两个百分比出现在相邻位置；<br>
+    ③ 角标是胶囊底+紫色，视觉重量比左侧模型名更重，抢夺了主语地位。
+  </div>
+
+  <div class="grid">
+
+    <!-- ===== A ===== -->
+    <div class="opt">
+      <div class="opt-hd"><span class="tag">A</span><span class="opt-name">独立一行 + 占比条</span></div>
+      <div class="stage">
+        <div class="card">
+          <div class="head">
+            <div class="ring">
+              <svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="87.9 87.9" stroke-linecap="round"/></svg>
+              <b>88%</b>
+            </div>
+            <div class="headmid">
+              <div class="row1">
+                <span class="lbl">缓存命中率</span>
+                <span class="total">102.7M Token</span>
+                <span class="live"><i></i>Live</span>
+              </div>
+              <div class="row2">
+                <span class="model"><span class="dot7"></span>deepseek-v4.1-flash 98%</span>
+              </div>
+            </div>
+          </div>
+          <div class="gwline"><span class="gwbar"><i style="width:97.8%"></i></span><em>网关</em> 97.8%</div>
+          <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+          <div class="heat"><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i></div>
+          <div class="tile">
+            <div class="kv"><span class="a">输入 102.5M</span><span class="b">输出 224.8K</span><span class="c">缓存 100.1M</span></div>
+            <div class="pills2"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+            <div class="pills2"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="opt-why">
+        <span class="pro">优点</span>：完全脱离模型名那一行，「占比条 + 网关」的读法只有一种，不会误读；条形让"占多少"一眼可见，不必读数字。<br>
+        <span class="con">代价</span>：多占一行 ≈ 15px 高度；卡片变高一点。260px 宽下这一行很空，可能显得松散。
+      </div>
+      <div class="verdict"><b>适合</b>：你希望占比成为"可扫视的信息"，而不是需要读的标签。</div>
+    </div>
+
+    <!-- ===== B ===== -->
+    <div class="opt">
+      <div class="opt-hd"><span class="tag">B</span><span class="opt-name">并入总量（总量 · 网关 97.8%）</span></div>
+      <div class="stage">
+        <div class="card">
+          <div class="head">
+            <div class="ring">
+              <svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="87.9 87.9" stroke-linecap="round"/></svg>
+              <b>88%</b>
+            </div>
+            <div class="headmid">
+              <div class="row1">
+                <span class="lbl">缓存命中率</span>
+                <span class="totalgrp"><span class="total">102.7M</span><span class="totsep">·</span><span class="totgw">网关 97.8%</span></span>
+                <span class="live"><i></i>Live</span>
+              </div>
+              <div class="row2">
+                <span class="model"><span class="dot7"></span>deepseek-v4.1-flash 98%</span>
+              </div>
+            </div>
+          </div>
+          <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+          <div class="heat"><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i></div>
+          <div class="tile">
+            <div class="kv"><span class="a">输入 102.5M</span><span class="b">输出 224.8K</span><span class="c">缓存 100.1M</span></div>
+            <div class="pills2"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+            <div class="pills2"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="opt-why">
+        <span class="pro">优点</span>：语义最正确 —— 它本来就修饰"总量"，贴在总量右侧是主语-定语的自然关系；不增加任何行高；去掉了 Token 后缀省宽度。<br>
+        <span class="con">代价</span>：第一行略挤（总量 + 网关% + Live 三样），窄屏下 Live 可能被压；需要把总量字号降 1px 或缩短文案。
+      </div>
+      <div class="verdict"><b>适合</b>：优先保证"不增高度"，且愿意接受第一行紧凑。</div>
+    </div>
+
+    <!-- ===== C ===== -->
+    <div class="opt">
+      <div class="opt-hd"><span class="tag">C</span><span class="opt-name">降级为色点（只留 ● 网关）</span></div>
+      <div class="stage">
+        <div class="card">
+          <div class="head">
+            <div class="ring">
+              <svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="87.9 87.9" stroke-linecap="round"/></svg>
+              <b>88%</b>
+            </div>
+            <div class="headmid">
+              <div class="row1">
+                <span class="lbl">缓存命中率</span>
+                <span class="total">102.7M Token</span>
+                <span class="live"><i></i>Live</span>
+              </div>
+              <div class="row2">
+                <span class="model"><span class="dot7"></span>deepseek-v4.1-flash 98%</span>
+                <span class="gwdot" title="网关占总量 97.8%"><i></i>网关</span>
+              </div>
+            </div>
+          </div>
+          <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+          <div class="heat"><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i></div>
+          <div class="tile">
+            <div class="kv"><span class="a">输入 102.5M</span><span class="b">输出 224.8K</span><span class="c">缓存 100.1M</span></div>
+            <div class="pills2"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+            <div class="pills2"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="opt-why">
+        <span class="pro">优点</span>：最小的视觉重量，只保留"这台机器上有网关流量"的信号；数字退到 hover 里。不占行高、不抢主语。<br>
+        <span class="con">代价</span>：占比信息不再可扫视，必须悬停才知道 97.8%（触屏无 hover，等于没有）。
+      </div>
+      <div class="verdict"><b>适合</b>：你觉得"具体百分比"不重要，只想确认网关是否在参与。</div>
+    </div>
+
+    <!-- ===== D ===== -->
+    <div class="opt">
+      <div class="opt-hd"><span class="tag">D</span><span class="opt-name">移入「输入/输出/缓存」构成行</span></div>
+      <div class="stage">
+        <div class="card">
+          <div class="head">
+            <div class="ring">
+              <svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="87.9 87.9" stroke-linecap="round"/></svg>
+              <b>88%</b>
+            </div>
+            <div class="headmid">
+              <div class="row1">
+                <span class="lbl">缓存命中率</span>
+                <span class="total">102.7M Token</span>
+                <span class="live"><i></i>Live</span>
+              </div>
+              <div class="row2">
+                <span class="model"><span class="dot7"></span>deepseek-v4.1-flash 98%</span>
+              </div>
+            </div>
+          </div>
+          <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+          <div class="heat"><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l2"></i><i class="l3"></i><i class="l2"></i><i class="l2"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i><i class="l1"></i></div>
+          <div class="tile">
+            <div class="kv"><span class="a">输入 102.5M</span><span class="b">输出 224.8K</span><span class="c">缓存 100.1M</span></div>
+            <div class="pills2"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+            <div class="pills2">
+              <span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span>
+              <span class="pill" style="grid-column:span 2"><span style="color:rgba(139,123,255,.85)">网关</span><b style="color:#8b7bff">97.8% · 401 次</b></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="opt-why">
+        <span class="pro">优点</span>：放在"构成/明细"区，读者已经在读数字分解，语义零歧义；还能顺带放"网关请求数"。<br>
+        <span class="con">代价</span>：要滚到底部才看得到，顶部扫视时丢失"总量里有网关"这个关键前提 —— 而这恰恰会影响你对上面所有数字的解读。
+      </div>
+      <div class="verdict"><b>适合</b>：你认为"构成明细"应该集中在一处，顶部越干净越好。</div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <p><b>我的建议：B 为主、A 为备。</b>B 之所以对，是因为它把定语放回了它修饰的中心语旁边（总量 · 网关 97.8%），读者不可能读错主语，而且零行高成本。A 是最"安全"的（物理隔离，绝不误读），代价只是 15px 高度。</p>
+    <p style="color:var(--cap)">当前实现（供对照）：角标在第二行最右，即 <code>.row2</code> 的末尾。要改成 B 只需把它从 <code>row2</code> 移到 <code>row1</code> 的 <code>.total</code> 之后；改成 A 则是新增一行；C 是删掉百分比；D 是移入底部 tile。</p>
+  </div>
+</div>
+</body>
+</html>

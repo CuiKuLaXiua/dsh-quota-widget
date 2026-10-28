@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>网关数值 · 现有布局三版（宽度已算准）</title>
+<style>
+  :root{
+    --bg:#0f0f14; --card:#1a1a1f; --card2:#1e1e26;
+    --line:rgba(255,255,255,.08);
+    --txt:#f5f5f7; --dim:#a0a0b0; --cap:#7a7a8a;
+    --gw:#8b7bff; --gwSoft:rgba(139,123,255,.13); --gwLine:rgba(139,123,255,.42);
+    --c1:#6b87d9; --c2:#b08427; --c3:#c65f7f; --ok:#10b981;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:40px 28px 70px;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:22px;font-weight:750;letter-spacing:-.4px;margin:0 0 8px}
+  .sub{font-size:13px;color:var(--dim);line-height:1.75;margin:0 0 10px;max-width:840px}
+
+  table.m{width:100%;border-collapse:collapse;font-size:11.5px;margin:14px 0 8px}
+  table.m th,table.m td{border:1px solid var(--line);padding:5px 9px;text-align:left}
+  table.m th{background:#181820;color:var(--cap);font-weight:600;font-size:11px}
+  table.m td.n{font-family:"Cascadia Code",Consolas,monospace;color:#a89bff;text-align:right}
+  table.m tr.ok td:last-child{color:#4ade80}
+  table.m tr.bad td:last-child{color:#f59e0b}
+
+  .key{font-size:12px;color:#6ee7a0;background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.24);
+    border-radius:8px;padding:12px 16px;margin:18px 0 34px;line-height:1.9}
+  .key b{color:#a7f3c0}
+  .key code{font-family:"Cascadia Code",Consolas,monospace;background:#242433;
+    padding:1px 5px;border-radius:4px;font-size:11px;color:#a89bff}
+
+  .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px}
+  @media (max-width:1100px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:760px){.grid{grid-template-columns:1fr}}
+  .opt{display:flex;flex-direction:column;gap:11px}
+  .hd{display:flex;align-items:baseline;gap:8px}
+  .tag{font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:5px;
+    background:rgba(139,123,255,.16);color:#a89bff;border:1px solid rgba(139,123,255,.3);
+    font-family:"Cascadia Code",Consolas,monospace}
+  .nm{font-size:13.5px;font-weight:700}
+  .why{font-size:11px;color:var(--cap);line-height:1.7}
+  .why .p{color:#4ade80}.why .c{color:#f59e0b}
+  .mstat{font-size:10.5px;font-family:"Cascadia Code",Consolas,monospace;color:#4ade80;
+    background:rgba(74,222,128,.07);border-radius:5px;padding:3px 7px;display:inline-block}
+
+  .stage{background:linear-gradient(160deg,#14141a,#0c0c11);border:1px solid var(--line);
+    border-radius:14px;padding:20px 14px;display:flex;justify-content:center;align-items:flex-start;min-height:240px}
+  .card{width:260px;border-radius:14px;background:var(--card);border:1px solid var(--line);
+    padding:9px 10px 10px;display:flex;flex-direction:column;gap:6px}
+
+  .head{display:flex;align-items:center;gap:8px;height:40px}
+  .ring{position:relative;width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center}
+  .ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+  .ring b{font-size:11px;font-weight:800;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+  .mid{display:flex;flex-direction:column;justify-content:center;gap:3px;flex:1;min-width:0}
+
+  .r1,.r2{display:flex;align-items:center;gap:6px;min-width:0}
+  .lbl{font-size:11px;font-weight:600;color:var(--c3);white-space:nowrap;flex:none}
+  .mdl{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    display:flex;align-items:center;gap:4px;min-width:0}
+  .d7{width:7px;height:7px;border-radius:50%;background:var(--c1);flex:none}
+  .sp{flex:1;min-width:0}
+  .tot{font-size:11px;font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+  .live{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;color:var(--ok);white-space:nowrap;flex:none}
+  .live i{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;animation:pu 1.6s infinite}
+  @keyframes pu{0%,100%{opacity:1}50%{opacity:.32}}
+
+  .gv{display:inline-flex;align-items:baseline;gap:3px;white-space:nowrap;flex:none;font-variant-numeric:tabular-nums}
+  .gv .k{font-size:9px;font-weight:600;color:rgba(139,123,255,.88)}
+  .gv .v{font-size:10px;font-weight:750;color:#b3aaff}
+
+  /* A：右列 + 竖线 */
+  .colA{position:relative;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;
+    gap:3px;flex:none;padding-left:5px;border-left:1px solid var(--gwLine)}
+  .colA::before{content:"";position:absolute;left:-1px;top:0;width:1px;height:50%;background:rgba(139,123,255,.9)}
+  .colA .trl{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+
+  /* B：胶囊 + 朝上三角 */
+  .gwcap{position:relative;display:inline-flex;align-items:baseline;gap:3px;padding:0 5px;border-radius:999px;
+    border:1px solid var(--gwLine);background:var(--gwSoft);white-space:nowrap;flex:none;font-variant-numeric:tabular-nums}
+  .gwcap .k{font-size:8.5px;font-weight:600;color:rgba(139,123,255,.9)}
+  .gwcap .v{font-size:9.5px;font-weight:750;color:#b3aaff}
+  .gwcap::before{content:"";position:absolute;top:-4px;right:11px;width:0;height:0;
+    border-left:3px solid transparent;border-right:3px solid transparent;border-bottom:4px solid var(--gwLine)}
+
+  /* C：纯右对齐 */
+  .pairR{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:3px;flex:none}
+  .pairR .trl{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+  .pairR .gr{display:inline-flex;align-items:baseline;gap:3px;white-space:nowrap}
+  .pairR .gr .k{font-size:9px;font-weight:600;color:rgba(139,123,255,.8)}
+  .pairR .gr .v{font-size:10px;font-weight:750;color:#b3aaff}
+
+  .tabs{display:flex;gap:4px;margin-top:2px}
+  .tab{flex:1;padding:3px 0;font-size:10px;font-weight:500;text-align:center;border-radius:999px;
+    border:1px solid var(--line);color:var(--dim)}
+  .tab.on{font-weight:700;border-color:rgba(109,91,255,.45);background:rgba(109,91,255,.14);color:#8b7bff}
+  .heat{display:flex;gap:3px;justify-content:center;margin:3px 0}
+  .heat i{display:block;width:9px;height:15px;border-radius:3px;background:rgba(109,91,255,.2)}
+  .heat i.a{background:rgba(109,91,255,.42)} .heat i.b{background:rgba(109,91,255,.72)} .heat i.c{background:#b3aaff}
+  .tile{background:var(--card2);border-radius:8px;padding:5px 7px;display:flex;flex-direction:column;gap:4px;margin-top:2px}
+  .kv{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:11px;font-weight:700}
+  .kv .ka{color:var(--c1)} .kv .kb{color:var(--c2);text-align:center} .kv .kc{color:var(--c3);text-align:right}
+  .pr{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr) minmax(0,1.1fr);gap:4px;margin-top:3px}
+  .pill{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:1px 4px;border-radius:999px;
+    background:#242433;border:1px solid rgba(255,255,255,.06);font-size:10px;line-height:1.2;white-space:nowrap;overflow:hidden}
+  .pill span{color:var(--dim);font-weight:500;flex:none}
+  .pill b{font-weight:700;overflow:hidden;text-overflow:ellipsis}
+  .nowcap{display:inline-flex;align-items:center;gap:4px;padding:0 5px;border-radius:999px;
+    border:1px solid var(--gwLine);background:var(--gwSoft);font-size:9px;font-weight:700;color:#8b7bff;white-space:nowrap;flex:none}
+
+  .legend{margin-top:44px;border-top:1px solid var(--line);padding-top:20px;font-size:12px;color:var(--dim);line-height:2}
+  .legend b{color:var(--txt)}
+  .legend code{font-family:"Cascadia Code",Consolas,monospace;background:#242433;padding:1px 5px;border-radius:4px;font-size:11px;color:#a89bff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>网关改用数值：现有两行布局上的三版</h1>
+  <p class="sub">总量<b>只在第一行出现一次</b>，行数仍为 2，高度不变。网关显示<b>实际 token 数</b>（100.4M），百分比去掉。三版的差别只在于「总量 ↔ 网关」的垂直从属怎么画。</p>
+
+  <table class="m">
+    <tr><th>文本（实测，非估算）</th><th style="width:90px">宽度</th><th>说明</th></tr>
+    <tr><td><code>缓存命中率</code> @11px</td><td class="n">55.0</td><td>第一行左</td></tr>
+    <tr><td><code>102.7M</code> @11px</td><td class="n">38.8</td><td>总量（去掉 Token 后缀）</td></tr>
+    <tr><td><code>● Live</code> @9px</td><td class="n">25.0</td><td>含圆点与间距</td></tr>
+    <tr><td><code>网关 100.4M</code> @9+10px</td><td class="n">60.1</td><td>新的网关数值</td></tr>
+    <tr><td><code>deepseek-v4.1-flash 98%</code></td><td class="n">133.4</td><td>含圆点与间距</td></tr>
+    <tr class="ok"><td><code>deepseek-v4.1-flash</code>（<b>去掉 98%</b>）</td><td class="n">108.9</td><td>含圆点与间距</td></tr>
+    <tr><td><b>文字区可用宽</b></td><td class="n">196.0</td><td>260 − 边框2 − 内距20 − 圆环34 − 间距8</td></tr>
+  </table>
+
+  <div class="key">
+    <b>关键发现：那个 98% 才是必须动的</b><br>
+    模型名后的 <code>98%</code>（= 该模型占总量的比重）与网关的 <code>97.8%</code> <b>原本紧挨着</b> —— 这正是你截图里"看起来像同一份数据"的<b>根本原因</b>，不只是位置问题。<br>
+    把它移进 tooltip（悬停仍可看全）后：模型名从 <b>133.4</b> 降到 <b>108.9</b>，省出 <b>24.5px</b> —— 三个方案因此<b>全都不截断</b>，而且误读的两个诱因（同行 + 相邻双百分数）同时消失。<br>
+    <span style="color:var(--cap)">若你坚持保留 98%，则只有"增加行高"或"更小字号"两条路，我会另出。</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- 现状 -->
+    <div class="opt">
+      <div class="hd"><span class="tag" style="background:rgba(255,255,255,.07);color:var(--cap);border-color:var(--line)">现状</span><span class="nm">网关 97.8%</span></div>
+      <div class="stage"><div class="card">
+        <div class="head">
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="89 100" stroke-linecap="round"/></svg><b>88%</b></div>
+          <div class="mid">
+            <div class="r1"><span class="lbl">缓存命中率</span><span class="sp"></span><span class="tot">102.7M Token</span><span class="live"><i></i>Live</span></div>
+            <div class="r2"><span class="mdl"><span class="d7"></span>deepseek-v4.1-flash 98%</span><span class="sp"></span><span class="nowcap">网关 97.8%</span></div>
+          </div>
+        </div>
+        <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+        <div class="heat"><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="a"></i><i class="a"></i><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="a"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tile">
+          <div class="kv"><span class="ka">输入 102.5M</span><span class="kb">输出 224.8K</span><span class="kc">缓存 100.1M</span></div>
+          <div class="pr"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+          <div class="pr"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+        </div>
+      </div></div>
+      <div class="why">模型名的 <b>98%</b> 与 <b>97.8%</b> 相邻，两处都是"标签+百分数"，且同处一行右侧。</div>
+      <div class="mstat">模型名 133.4 / 可用 196　刚好挤满</div>
+    </div>
+
+    <!-- ══ A ══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">A</span><span class="nm">右列 + 竖线</span></div>
+      <div class="stage"><div class="card">
+        <div class="head">
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="89 100" stroke-linecap="round"/></svg><b>88%</b></div>
+          <div class="mid">
+            <div class="r1"><span class="lbl">缓存命中率</span></div>
+            <div class="r2"><span class="mdl" title="deepseek-v4.1-flash · 占总用量 98%"><span class="d7"></span>deepseek-v4.1-flash</span></div>
+          </div>
+          <div class="colA">
+            <span class="trl"><span class="tot">102.7M</span><span class="live"><i></i>Live</span></span>
+            <span class="gv"><span class="k">网关</span><span class="v">100.4M</span></span>
+          </div>
+        </div>
+        <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+        <div class="heat"><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="a"></i><i class="a"></i><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="a"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tile">
+          <div class="kv"><span class="ka">输入 102.5M</span><span class="kb">输出 224.8K</span><span class="kc">缓存 100.1M</span></div>
+          <div class="pr"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+          <div class="pr"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+        </div>
+      </div></div>
+      <div class="why"><span class="p">强项</span>：两值右对齐成列，1px 竖线（上半段加亮）宣告"网关从上面这个数分出来"；<b>102.7 − 100.4 ≈ 2.3M</b> 心算即得本机量。<br>
+      <span class="c">代价</span>：竖线是新增装饰元素。</div>
+      <div class="mstat">模型名 108.9 / 可用 114.2　✓ 不截断</div>
+    </div>
+
+    <!-- ══ B ══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">B</span><span class="nm">胶囊 + 朝上三角</span></div>
+      <div class="stage"><div class="card">
+        <div class="head">
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="89 100" stroke-linecap="round"/></svg><b>88%</b></div>
+          <div class="mid">
+            <div class="r1"><span class="lbl">缓存命中率</span><span class="sp"></span><span class="tot">102.7M</span><span class="live"><i></i>Live</span></div>
+            <div class="r2"><span class="mdl" title="deepseek-v4.1-flash · 占总用量 98%"><span class="d7"></span>deepseek-v4.1-flash</span><span class="sp"></span><span class="gwcap"><span class="k">网关</span><span class="v">100.4M</span></span></div>
+          </div>
+        </div>
+        <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+        <div class="heat"><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="a"></i><i class="a"></i><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="a"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tile">
+          <div class="kv"><span class="ka">输入 102.5M</span><span class="kb">输出 224.8K</span><span class="kc">缓存 100.1M</span></div>
+          <div class="pr"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+          <div class="pr"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+        </div>
+      </div></div>
+      <div class="why"><span class="p">强项</span>：保留胶囊（你原本的偏好）；顶部小三角朝上指总量，是"气泡/提示"的通用语义（上为主、下为注）；胶囊比上方总量窄，宽度差也在暗示从属。<br>
+      <span class="c">代价</span>：胶囊有底色对边框，视觉重量比 A 重；三角 3px，扫视可能忽略。</div>
+      <div class="mstat">模型名 108.9 / 可用 125.5　✓ 不截断</div>
+    </div>
+
+    <!-- ══ C ══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">C</span><span class="nm">纯右对齐（零装饰）</span></div>
+      <div class="stage"><div class="card">
+        <div class="head">
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="89 100" stroke-linecap="round"/></svg><b>88%</b></div>
+          <div class="mid">
+            <div class="r1"><span class="lbl">缓存命中率</span></div>
+            <div class="r2"><span class="mdl" title="deepseek-v4.1-flash · 占总用量 98%"><span class="d7"></span>deepseek-v4.1-flash</span><span class="sp"></span></div>
+          </div>
+          <div class="pairR">
+            <span class="trl"><span class="tot">102.7M</span><span class="live"><i></i>Live</span></span>
+            <span class="gr"><span class="k">网关</span><span class="v">100.4M</span></span>
+          </div>
+        </div>
+        <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+        <div class="heat"><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="a"></i><i class="a"></i><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="a"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tile">
+          <div class="kv"><span class="ka">输入 102.5M</span><span class="kb">输出 224.8K</span><span class="kc">缓存 100.1M</span></div>
+          <div class="pr"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+          <div class="pr"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+        </div>
+      </div></div>
+      <div class="why"><span class="p">强项</span>：不加任何线/框，只靠<b>右边缘严格对齐 + 字号降 1px + 紫色</b>建立从属；最不像仪表盘，低分屏与色弱都稳。<br>
+      <span class="c">代价</span>：从属感全靠"右对齐成列=同一组"的排版惯例，不熟悉的人可能仍读成并列。</div>
+      <div class="mstat">模型名 108.9 / 可用 121.2　✓ 不截断</div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <p><b>三版共同的配套改动</b>：① 总量去掉 <code>Token</code> 后缀（38.8 vs 67.8，省 29px）；② 模型名后的 <code>98%</code> 移入 tooltip（省 24.5px）；③ 网关显示数值、去掉百分比。<b>总节省 53.5px</b>，这是三版都不截断的前提。</p>
+    <p><b>我推荐 A</b>：在"必须垂直关联"这个前提下，竖线是唯一能一眼看出"上下是一组"的手段，而且它同时让两数可相减（102.7 − 100.4 = 2.3M 本机量）。<br>
+    <b>B</b> 适合你还想要胶囊质感、且希望网关看起来"可点开"；<b>C</b> 适合你厌恶任何新增线条。</p>
+    <p style="color:var(--cap)">如果你不接受"把模型名的 98% 移进 tooltip"，告诉我，我改成 +11px 行高方案（在第二行下方加一条极细的从属行），但那样卡片会变高。</p>
+  </div>
+</div>
+</body>
+</html>

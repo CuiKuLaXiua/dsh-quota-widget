@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>网关用量 · 垂直关联四方案</title>
+<style>
+  :root{
+    --bg:#0f0f14; --card:#1a1a1f; --card2:#1e1e26;
+    --line:rgba(255,255,255,.08);
+    --txt:#f5f5f7; --dim:#a0a0b0; --cap:#7a7a8a;
+    --accent:#8b7bff; --gw:#8b7bff; --gwSoft:rgba(139,123,255,.14); --gwLine:rgba(139,123,255,.42);
+    --c1:#6b87d9; --c2:#b08427; --c3:#c65f7f; --ok:#10b981;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:40px 28px 70px;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:22px;font-weight:750;letter-spacing:-.4px;margin:0 0 8px}
+  .sub{font-size:13px;color:var(--dim);line-height:1.75;margin:0 0 10px;max-width:800px}
+  .brief{font-size:12px;color:#8b7bff;background:rgba(139,123,255,.07);border:1px solid rgba(139,123,255,.22);
+    border-radius:8px;padding:11px 15px;margin:16px 0 36px;line-height:1.8}
+  .brief b{color:#a89bff}
+
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:34px}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  .opt{display:flex;flex-direction:column;gap:12px}
+  .hd{display:flex;align-items:baseline;gap:9px}
+  .tag{font-size:10px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:5px;
+    background:rgba(139,123,255,.16);color:#a89bff;border:1px solid rgba(139,123,255,.3);
+    font-family:"Cascadia Code",Consolas,monospace}
+  .nm{font-size:14px;font-weight:700}
+  .why{font-size:11.5px;color:var(--cap);line-height:1.7}
+  .why .p{color:#4ade80}.why .c{color:#f59e0b}
+  .fit{font-size:11px;color:var(--cap)}
+  .fit b{color:#a89bff}
+
+  .stage{background:linear-gradient(160deg,#14141a,#0c0c11);border:1px solid var(--line);
+    border-radius:14px;padding:24px 16px;display:flex;justify-content:center;align-items:flex-start;min-height:300px}
+  .card{width:260px;border-radius:14px;background:var(--card);border:1px solid var(--line);
+    padding:9px 10px 10px;display:flex;flex-direction:column;gap:6px}
+
+  /* 头部（三版共用，保持与现状一致便于对比） */
+  .head{display:flex;align-items:flex-start;gap:8px}
+  .ring{position:relative;width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+  .ring b{font-size:11px;font-weight:800;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+  .hm{display:flex;flex-direction:column;justify-content:center;gap:3px;flex:1;min-width:0}
+  .r1{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+  .r2{display:flex;align-items:center;gap:6px;min-width:0}
+  .lbl{font-size:11px;font-weight:600;color:var(--c3);white-space:nowrap}
+  .tot{font-size:11px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .mdl{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;min-width:0}
+  .d7{width:7px;height:7px;border-radius:50%;background:var(--c1);flex:none}
+  .live{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;color:var(--ok);white-space:nowrap;flex:none}
+  .live i{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;animation:pu 1.6s infinite}
+  @keyframes pu{0%,100%{opacity:1}50%{opacity:.32}}
+  .tabs{display:flex;gap:4px;margin-top:2px}
+  .tab{flex:1;padding:3px 0;font-size:10px;font-weight:500;text-align:center;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+  .tab.on{font-weight:700;border-color:rgba(109,91,255,.45);background:rgba(109,91,255,.14);color:#8b7bff}
+  .heat{display:flex;gap:3px;justify-content:center;margin:3px 0}
+  .heat i{display:block;width:9px;height:15px;border-radius:3px;background:rgba(109,91,255,.2)}
+  .heat i.a{background:rgba(109,91,255,.42)} .heat i.b{background:rgba(109,91,255,.72)} .heat i.c{background:#b3aaff}
+  .tile{background:var(--card2);border-radius:8px;padding:5px 7px;display:flex;flex-direction:column;gap:4px;margin-top:2px}
+  .kv{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:11px;font-weight:700}
+  .kv .ka{color:var(--c1)} .kv .kb{color:var(--c2);text-align:center} .kv .kc{color:var(--c3);text-align:right}
+  .pr{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr) minmax(0,1.1fr);gap:4px;margin-top:3px}
+  .pill{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:1px 4px;border-radius:999px;
+    background:#242433;border:1px solid rgba(255,255,255,.06);font-size:10px;line-height:1.2;white-space:nowrap;overflow:hidden}
+  .pill span{color:var(--dim);font-weight:500;flex:none}
+  .pill b{font-weight:700;overflow:hidden;text-overflow:ellipsis}
+
+  /* ═══ 方案 A：垂直双格胶囊（共边框，上下两段） ═══ */
+  .stacked{
+    border:1px solid var(--gwLine);border-radius:9px;overflow:hidden;
+    background:var(--gwSoft);margin-top:1px;
+  }
+  .stacked .seg{display:flex;align-items:center;justify-content:space-between;gap:6px;
+    padding:2px 7px;font-size:9.5px;line-height:1.5}
+  .stacked .seg + .seg{border-top:1px solid rgba(139,123,255,.28)}
+  .stacked .k{color:var(--dim);font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+  .stacked .k em{font-style:normal;color:rgba(139,123,255,.95);font-weight:700}
+  .stacked .v{font-weight:750;font-variant-numeric:tabular-nums;color:var(--txt);white-space:nowrap}
+  .stacked .v.gw{color:#b3aaff}
+  .stacked .pct{font-size:8.5px;color:rgba(139,123,255,.75);font-weight:600;margin-left:3px}
+
+  /* ═══ 方案 B：左侧轨道 + 树状缩进 ═══ */
+  .tree{display:flex;flex-direction:column;gap:1px;margin-top:1px;padding-left:1px}
+  .tnode{display:flex;align-items:center;gap:5px;font-size:9.5px;line-height:1.6;white-space:nowrap}
+  .trail{width:9px;flex:none;position:relative;align-self:stretch;display:flex;justify-content:flex-end}
+  .trail::before{content:"";position:absolute;right:4px;top:0;bottom:0;width:1px;background:rgba(139,123,255,.34)}
+  .tnode.last .trail::before{bottom:50%}
+  .tnode.last .trail::after{content:"";position:absolute;right:4px;top:50%;width:5px;height:1px;background:rgba(139,123,255,.34)}
+  .tnode .tk{color:var(--dim);font-weight:500}
+  .tnode .tv{font-weight:750;font-variant-numeric:tabular-nums;margin-left:auto}
+  .tnode.root .tv{color:var(--txt)}
+  .tnode.child .tv{color:#b3aaff}
+  .tnode .tp{font-size:8.5px;color:rgba(139,123,255,.75);font-weight:600;margin-left:2px}
+  .trootrail{width:9px;flex:none}
+
+  /* ═══ 方案 C：竖向分段条 + 数值对齐 ═══ */
+  .vbar{display:flex;gap:7px;margin-top:2px;align-items:stretch}
+  .vbarTrack{width:4px;border-radius:2px;overflow:hidden;background:rgba(255,255,255,.07);
+    display:flex;flex-direction:column;flex:none}
+  .vbarTrack i{display:block;width:100%}
+  .vbarTrack .g{background:linear-gradient(180deg,#8b7bff,#6d5bff)}
+  .vbarTrack .l{background:#3f4a63}
+  .vbarRows{display:flex;flex-direction:column;justify-content:space-between;gap:2px;flex:1;min-width:0}
+  .vrow{display:flex;align-items:center;gap:5px;font-size:9.5px;line-height:1.45;white-space:nowrap}
+  .vrow .mk{width:4px;height:4px;border-radius:50%;flex:none}
+  .vrow .vk{color:var(--dim);font-weight:500}
+  .vrow .vv{margin-left:auto;font-weight:750;font-variant-numeric:tabular-nums}
+  .vrow.gwv .vv{color:#b3aaff}
+  .vrow .vp{font-size:8.5px;color:rgba(139,123,255,.75);font-weight:600}
+
+  /* ═══ 方案 D：上下胶囊 + 「其中」连接角 ═══ */
+  .linked{display:flex;flex-direction:column;align-items:flex-start;gap:0;margin-top:1px}
+  .cap{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:999px;
+    font-size:9.5px;line-height:1.5;border:1px solid var(--line);background:#242433;white-space:nowrap}
+  .cap .ck{color:var(--dim);font-weight:500}
+  .cap .cv{font-weight:750;font-variant-numeric:tabular-nums}
+  .cap.up{border-color:rgba(255,255,255,.1)}
+  .cap.dn{border-color:var(--gwLine);background:var(--gwSoft)}
+  .cap.dn .cv{color:#b3aaff}
+  .cap .cp{font-size:8.5px;color:rgba(139,123,255,.75);font-weight:600}
+  .connector{display:flex;align-items:center;gap:4px;padding-left:9px;height:11px}
+  .connector .bar{width:1px;height:100%;background:rgba(139,123,255,.4)}
+  .connector .txt{font-size:8px;color:rgba(139,123,255,.8);font-weight:600;letter-spacing:.02em}
+
+  .legend{margin-top:46px;border-top:1px solid var(--line);padding-top:20px;font-size:12px;color:var(--dim);line-height:2}
+  .legend b{color:var(--txt)}
+  .legend code{font-family:"Cascadia Code",Consolas,monospace;background:#242433;padding:1px 5px;border-radius:4px;font-size:11px;color:#a89bff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>网关用量：垂直关联的四种做法</h1>
+  <p class="sub">改动要点：① 网关值从 <b>97.8%</b> 改成<b>实际 token 数</b>（100.4M），百分比退到次要位置；② 用<b>垂直方向</b>的结构关系（共边框 / 轨道 / 分段条 / 连接角）表达「网关属于总量」，而不是靠水平并置。</p>
+
+  <div class="brief">
+    <b>数据基准</b>（与你的截图同源）：总量 <b>102.7M</b>，其中网关 <b>100.4M</b>（97.8%），本机 2.3M。<br>
+    <b>为什么垂直就能解决误读</b>：误读的本质是「水平相邻 = 同一主语」。把两个数改成<b>上下从属</b>，读者的解析顺序会天然变成「总量 → 它下面的子项」，模型名在另一个水平层级，不再参与竞争。
+  </div>
+
+  <div class="grid">
+
+    <!-- ══ A ══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">A</span><span class="nm">垂直双格胶囊（共边框）</span></div>
+      <div class="stage"><div class="card">
+        <div class="head">
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="89 100" stroke-linecap="round"/></svg><b>88%</b></div>
+          <div class="hm">
+            <div class="r1"><span class="lbl">缓存命中率</span><span class="tot">102.7M Token</span><span class="live"><i></i>Live</span></div>
+            <div class="r2"><span class="mdl"><span class="d7"></span>deepseek-v4.1-flash 98%</span></div>
+          </div>
+        </div>
+        <div class="stacked">
+          <div class="seg"><span class="k">总量</span><span class="v">102.7M</span></div>
+          <div class="seg"><span class="k"><em>其中</em>网关</span><span class="v gw">100.4M<span class="pct">97.8%</span></span></div>
+        </div>
+        <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+        <div class="heat"><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="a"></i><i class="a"></i><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="a"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tile">
+          <div class="kv"><span class="ka">输入 102.5M</span><span class="kb">输出 224.8K</span><span class="kc">缓存 100.1M</span></div>
+          <div class="pr"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+          <div class="pr"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+        </div>
+      </div></div>
+      <div class="why"><span class="p">强项</span>：一个边框把两行圈成"同一个东西的两段"，归属关系靠**物理包含**而非文字；数值等宽右对齐，便于相减（102.7 − 100.4 = 本机 2.3M 自己就能算）。<br>
+      <span class="c">代价</span>：+22px 高度；顶部总量与下面重复了一次（可把上面的 Token 后缀去掉避免重复）。</div>
+      <div class="fit"><b>适合</b>：你希望"总量 → 网关"是一条可读的账，且愿意为它多给两行。</div>
+    </div>
+
+    <!-- ══ B ══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">B</span><span class="nm">左侧轨道 · 树状从属</span></div>
+      <div class="stage"><div class="card">
+        <div class="head">
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="89 100" stroke-linecap="round"/></svg><b>88%</b></div>
+          <div class="hm">
+            <div class="r1"><span class="lbl">缓存命中率</span><span class="tot">102.7M Token</span><span class="live"><i></i>Live</span></div>
+            <div class="r2"><span class="mdl"><span class="d7"></span>deepseek-v4.1-flash 98%</span></div>
+          </div>
+        </div>
+        <div class="tree">
+          <div class="tnode root"><span class="trootrail"></span><span class="tk">总量</span><span class="tv">102.7M</span></div>
+          <div class="tnode child last"><span class="trail"></span><span class="tk">网关</span><span class="tv">100.4M</span><span class="tp">97.8%</span></div>
+        </div>
+        <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+        <div class="heat"><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="a"></i><i class="a"></i><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="a"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tile">
+          <div class="kv"><span class="ka">输入 102.5M</span><span class="kb">输出 224.8K</span><span class="kc">缓存 100.1M</span></div>
+          <div class="pr"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+          <div class="pr"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+        </div>
+      </div></div>
+      <div class="why"><span class="p">强项</span>：`└` 拐角是**全世界都读得懂的从属符号**（文件树/大纲），零学习成本；无边框、视觉最轻，不抢模型名的位置。<br>
+      <span class="c">代价</span>：+18px；左轨道宽度只有 9px，缩进感偏弱；两行都是裸文字，缺少"块"的实体感。</div>
+      <div class="fit"><b>适合</b>：你想要最轻的视觉重量，且偏好"信息层级"而非"卡片块"的表达。</div>
+    </div>
+
+    <!-- ══ C ══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">C</span><span class="nm">竖向分段条 + 数值对齐</span></div>
+      <div class="stage"><div class="card">
+        <div class="head">
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="89 100" stroke-linecap="round"/></svg><b>88%</b></div>
+          <div class="hm">
+            <div class="r1"><span class="lbl">缓存命中率</span><span class="tot">102.7M Token</span><span class="live"><i></i>Live</span></div>
+            <div class="r2"><span class="mdl"><span class="d7"></span>deepseek-v4.1-flash 98%</span></div>
+          </div>
+        </div>
+        <div class="vbar">
+          <div class="vbarTrack" style="height:30px"><i class="g" style="height:97.8%"></i><i class="l" style="height:2.2%"></i></div>
+          <div class="vbarRows" style="height:30px">
+            <div class="vrow gwv"><span class="mk" style="background:#8b7bff"></span><span class="vk">网关</span><span class="vv">100.4M</span><span class="vp">97.8%</span></div>
+            <div class="vrow"><span class="mk" style="background:#3f4a63"></span><span class="vk">本机</span><span class="vv" style="color:var(--dim)">2.3M</span></div>
+          </div>
+        </div>
+        <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+        <div class="heat"><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="a"></i><i class="a"></i><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="a"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tile">
+          <div class="kv"><span class="ka">输入 102.5M</span><span class="kb">输出 224.8K</span><span class="kc">缓存 100.1M</span></div>
+          <div class="pr"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+          <div class="pr"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+        </div>
+      </div></div>
+      <div class="why"><span class="p">强项</span>：那根竖向条**同时表达了占比与归属**（紫段长=网关占 97.8%，灰段=本机），是唯一"看图就懂比例"的方案；且它天然带出本机值 2.3M，两数相加即总量。<br>
+      <span class="c">代价</span>：+22px；竖条只有 4px 宽，在高 DPI 屏上偏细；本机/网关的上下顺序与"总量在上"的直觉不完全一致。</div>
+      <div class="fit"><b>适合</b>：你最关心"到底谁在大头"这件事，希望不读数字就看出比例。</div>
+    </div>
+
+    <!-- ══ D ══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">D</span><span class="nm">上下双胶囊 + 「其中」连接角</span></div>
+      <div class="stage"><div class="card">
+        <div class="head">
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#c65f7f" stroke-width="4" stroke-dasharray="89 100" stroke-linecap="round"/></svg><b>88%</b></div>
+          <div class="hm">
+            <div class="r1"><span class="lbl">缓存命中率</span><span class="tot">102.7M Token</span><span class="live"><i></i>Live</span></div>
+            <div class="r2"><span class="mdl"><span class="d7"></span>deepseek-v4.1-flash 98%</span></div>
+          </div>
+        </div>
+        <div class="linked">
+          <span class="cap up"><span class="ck">总量</span><span class="cv">102.7M</span></span>
+          <span class="connector"><span class="bar"></span><span class="txt">其中</span></span>
+          <span class="cap dn"><span class="ck">网关</span><span class="cv">100.4M</span><span class="cp">97.8%</span></span>
+        </div>
+        <div class="tabs"><span class="tab on">今日</span><span class="tab">7天</span><span class="tab">30天</span><span class="tab">90天</span><span class="tab">全部</span></div>
+        <div class="heat"><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="b"></i><i class="a"></i><i class="a"></i><i></i><i></i><i class="a"></i><i class="a"></i><i class="b"></i><i class="b"></i><i class="b"></i><i class="c"></i><i class="b"></i><i class="a"></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="tile">
+          <div class="kv"><span class="ka">输入 102.5M</span><span class="kb">输出 224.8K</span><span class="kc">缓存 100.1M</span></div>
+          <div class="pr"><span class="pill"><span>轮次</span><b style="color:var(--c1)">9</b></span><span class="pill"><span>步数</span><b style="color:var(--c2)">66</b></span><span class="pill"><span>工具</span><b style="color:var(--c3)">88</b></span></div>
+          <div class="pr"><span class="pill"><span>请求</span><b style="color:var(--c2)">405</b></span></div>
+        </div>
+      </div></div>
+      <div class="why"><span class="p">强项</span>：胶囊（你指定的样式）+ `其中` 二字把关系**写死在文字上**，最不可能误读；两个胶囊宽度不同（下窄上宽）也能暗示从属。<br>
+      <span class="c">代价</span>：+28px，四版里最高；三个元素（胶囊+连接角+胶囊）在 260px 里略显啰嗦；`其中` 与上面的 `总量` 语义重叠。</div>
+      <div class="fit"><b>适合</b>：你最不能容忍误读，宁可多占地方也要把话说死。</div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <p><b>我的判断</b>：<b>C</b> 是这四版里唯一"图本身就说明比例"的（那根竖条），而且顺手把本机值也给了出来；<b>B</b> 是视觉最克制、最不会抢戏的；<b>A</b> 是结构最规整、最适合以后还要加第三个子项的。</p>
+    <p style="color:var(--cap)">如果要更省高度，还有一个「A 的压缩变体」：把总量留在第一行（`102.7M Token`），只在模型名那行下面加**一行** <code>其中网关 100.4M</code> —— 只增 11px，但归属靠"其中"二字，不如 A 的共边框硬。这个变体我可以在你选定主方向后一并给出。</p>
+  </div>
+</div>
+</body>
+</html>

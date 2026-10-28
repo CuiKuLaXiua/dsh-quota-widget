@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>缓存命中率圆环 · 5 种实现风格</title>
+<style>
+  :root{
+    --bg:#0e0f14; --card:#1a1a1f;
+    --line:rgba(255,255,255,.08);
+    --txt:#f0f0f5; --dim:#9a9aaa; --cap:#7a7a88;
+    --pink:#c65f7f; --pink2:#ff8fab; --blue:#6b87d9;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:36px 24px 80px;
+    background:radial-gradient(1200px 600px at 50% -10%,#1b1d27,#0b0c11 60%);
+    color:var(--txt);
+    font:14px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:20px;font-weight:750;margin:0 0 6px;letter-spacing:-.3px}
+  .sub{color:var(--dim);font-size:12px;margin:0 0 30px;line-height:1.7}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px}
+
+  /* 每张卡 = 真实 260px 悬浮窗 */
+  .demo{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:9px 10px 11px;width:260px;
+    box-shadow:0 12px 30px -12px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .demo-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .demo-head .t{font-size:11px;font-weight:700}
+  .demo-head .v{font-size:11px;font-weight:600;color:var(--dim)}
+
+  .label{display:flex;align-items:baseline;gap:8px;margin:0 0 9px;font-size:12px;color:var(--dim)}
+  .label b{font-size:13px;color:var(--txt);font-weight:750}
+  .label .tag{font-size:10px;color:var(--cap);border:1px solid var(--line);border-radius:999px;padding:1px 7px}
+
+  /* 行：环 + 右侧文字（真实布局） */
+  .hero{display:flex;align-items:center;gap:9px;height:42px}
+  .hero-txt{display:flex;flex-direction:column;justify-content:center;gap:3px;flex:1;min-width:0}
+  .row1{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
+  .row1 .k{font-size:11px;font-weight:600;color:var(--pink);white-space:nowrap}
+  .row1 .r{display:flex;align-items:center;gap:7px;flex:none}
+  .row1 .total{font-size:11px;font-weight:600;white-space:nowrap}
+  .live{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;color:#10b981}
+  .live i{width:5px;height:5px;border-radius:50%;background:#10b981;display:block}
+  .row2{display:flex;align-items:center;gap:4px;width:100%;margin-top:3px}
+  .row2 .dot{width:7px;height:7px;border-radius:50%;background:var(--blue);flex:none}
+  .row2 .m{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* 环内数字通用（各方案字号不同） */
+  .numin{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-variant-numeric:tabular-nums;line-height:1;pointer-events:none;
+  }
+  .numin .pc{font-size:.62em;font-weight:700;opacity:.72;margin-left:.5px}
+  .ringbox{position:relative;flex:none}
+
+  .note{margin-top:36px;padding:18px 20px;border-radius:12px;
+    background:rgba(255,255,255,.03);border:1px solid var(--line);
+    font-size:12px;color:var(--dim);line-height:1.85}
+  .note b{color:var(--txt)}
+  .note code{background:rgba(255,255,255,.07);padding:1px 5px;border-radius:4px;font-size:11px}
+  .note ul{margin:8px 0 0;padding-left:18px}
+  .note li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>缓存命中率 · 5 种圆环实现风格</h1>
+  <p class="sub">
+    全部满足「圆环 + 环内百分比」。差异在：环宽、内圈处理、数字排版、端点与填充语义。<br>
+    卡宽固定 <code>260px</code>；命中率统一取 <b>99%</b>（最能暴露"近满环看不出缺口"的问题）。
+  </p>
+
+  <div class="grid">
+
+    <!-- ══════════ 1. 极细环 + 内衬底 ══════════ -->
+    <div>
+      <div class="label"><b>方案 1</b><span class="tag">极细环 + 内衬底</span></div>
+      <div class="demo">
+        <div class="demo-head"><span class="t">Token 用量</span><span class="v">220.1M Token</span></div>
+        <div class="hero">
+          <div class="ringbox" style="width:38px;height:38px">
+            <svg width="38" height="38" viewBox="0 0 38 38" style="overflow:visible">
+              <defs><linearGradient id="a1" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#c65f7f"/><stop offset="100%" stop-color="#ff8fab"/></linearGradient></defs>
+              <!-- 内衬底：给数字一个"落地"的圆面，与环之间留白 -->
+              <circle cx="19" cy="19" r="14.2" fill="rgba(255,255,255,.045)"/>
+              <!-- 细轨道 -->
+              <circle cx="19" cy="19" r="17.6" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="2"/>
+              <!-- 进度：2px 细环 + 圆头 -->
+              <circle cx="19" cy="19" r="17.6" fill="none" stroke="url(#a1)" stroke-width="2"
+                      stroke-linecap="round" stroke-dasharray="104.4 6.2"
+                      transform="rotate(-90 19 19)"/>
+            </svg>
+            <div class="numin" style="font-size:13px;font-weight:800;letter-spacing:-.4px">
+              99<span class="pc">%</span>
+            </div>
+          </div>
+          <div class="hero-txt">
+            <div class="row1"><span class="k">缓存命中率</span>
+              <span class="r"><span class="total">220.1M</span><span class="live"><i></i>Live</span></span></div>
+          </div>
+        </div>
+        <div class="row2"><span class="dot"></span><span class="m">u2-flash 82%</span></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 2. 粗环 + 内凹槽 ══════════ -->
+    <div>
+      <div class="label"><b>方案 2</b><span class="tag">粗环 + 内凹槽</span></div>
+      <div class="demo">
+        <div class="demo-head"><span class="t">Token 用量</span><span class="v">220.1M Token</span></div>
+        <div class="hero">
+          <div class="ringbox" style="width:40px;height:40px">
+            <svg width="40" height="40" viewBox="0 0 40 40" style="overflow:visible">
+              <defs><linearGradient id="a2" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#c65f7f"/><stop offset="100%" stop-color="#ff8fab"/></linearGradient></defs>
+              <!-- 内凹槽：径向渐变做出"挖下去"的感觉 -->
+              <circle cx="20" cy="20" r="14.6" fill="rgba(0,0,0,.30)"/>
+              <circle cx="20" cy="20" r="14.6" fill="none" stroke="rgba(0,0,0,.45)" stroke-width="1.6"/>
+              <!-- 粗轨道 -->
+              <circle cx="20" cy="20" r="17.2" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="4.6"/>
+              <!-- 进度：5px 粗环，无圆头（保持机械的方切口） -->
+              <circle cx="20" cy="20" r="17.2" fill="none" stroke="url(#a2)" stroke-width="4.6"
+                      stroke-dasharray="101 7.1" transform="rotate(-90 20 20)"
+                      style="filter:drop-shadow(0 0 3px rgba(198,95,127,.45))"/>
+            </svg>
+            <div class="numin" style="font-size:11.5px;font-weight:800;letter-spacing:-.5px;text-shadow:0 1px 2px rgba(0,0,0,.7)">
+              99<span class="pc">%</span>
+            </div>
+          </div>
+          <div class="hero-txt">
+            <div class="row1"><span class="k">缓存命中率</span>
+              <span class="r"><span class="total">220.1M</span><span class="live"><i></i>Live</span></span></div>
+          </div>
+        </div>
+        <div class="row2"><span class="dot"></span><span class="m">u2-flash 82%</span></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 3. 渐变环 + 渐变数字 ══════════ -->
+    <div>
+      <div class="label"><b>方案 3</b><span class="tag">渐变环 + 渐变数字</span></div>
+      <div class="demo">
+        <div class="demo-head"><span class="t">Token 用量</span><span class="v">220.1M Token</span></div>
+        <div class="hero">
+          <div class="ringbox" style="width:38px;height:38px">
+            <svg width="38" height="38" viewBox="0 0 38 38" style="overflow:visible">
+              <defs>
+                <linearGradient id="a3" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#c65f7f"/><stop offset="55%" stop-color="#ff8fab"/>
+                  <stop offset="100%" stop-color="#ffc2d4"/></linearGradient>
+                <linearGradient id="a3t" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#ffd0de"/><stop offset="100%" stop-color="#ff8fab"/></linearGradient>
+              </defs>
+              <circle cx="19" cy="19" r="16.2" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="3.6"/>
+              <circle cx="19" cy="19" r="16.2" fill="none" stroke="url(#a3)" stroke-width="3.6"
+                      stroke-linecap="round" stroke-dasharray="95.5 6.3"
+                      transform="rotate(-90 19 19)"
+                      style="filter:drop-shadow(0 0 4px rgba(255,143,171,.55))"/>
+            </svg>
+            <!-- 数字也用渐变：background-clip:text -->
+            <div class="numin" style="font-size:13px;font-weight:800;letter-spacing:-.4px;
+                 background:url(#) ;">
+              <span style="background:linear-gradient(180deg,#ffd0de,#ff8fab);
+                -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+                filter:drop-shadow(0 0 3px rgba(255,143,171,.45))">99</span>
+              <span class="pc" style="background:linear-gradient(180deg,#ffd0de,#ff8fab);
+                -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">%</span>
+            </div>
+          </div>
+          <div class="hero-txt">
+            <div class="row1"><span class="k">缓存命中率</span>
+              <span class="r"><span class="total">220.1M</span><span class="live"><i></i>Live</span></span></div>
+          </div>
+        </div>
+        <div class="row2"><span class="dot"></span><span class="m">u2-flash 82%</span></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 4. 开口仪表环 + 大数字 ══════════ -->
+    <div>
+      <div class="label"><b>方案 4</b><span class="tag">开口仪表 + 大数字</span></div>
+      <div class="demo">
+        <div class="demo-head"><span class="t">Token 用量</span><span class="v">220.1M Token</span></div>
+        <div class="hero">
+          <div class="ringbox" style="width:42px;height:42px">
+            <svg width="42" height="42" viewBox="0 0 42 42" style="overflow:visible">
+              <defs><linearGradient id="a4" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#c65f7f"/><stop offset="100%" stop-color="#ff8fab"/></linearGradient></defs>
+              <!-- 开口 50°，居正下方：可见弧 310° -->
+              <circle cx="21" cy="21" r="18.3" fill="none" stroke="rgba(255,255,255,.09)"
+                      stroke-width="3.2" stroke-linecap="round"
+                      stroke-dasharray="99 15.98" transform="rotate(115 21 21)"/>
+              <circle cx="21" cy="21" r="18.3" fill="none" stroke="url(#a4)"
+                      stroke-width="3.2" stroke-linecap="round"
+                      stroke-dasharray="97.9 17.08" transform="rotate(115 21 21)"/>
+              <!-- 末端定位圆点（进度终点标记） -->
+              <circle cx="21" cy="2.7" r="2.1" fill="#ffc2d4"
+                      transform="rotate(-137 21 21)" style="filter:drop-shadow(0 0 2px rgba(255,143,171,.8))"/>
+            </svg>
+            <!-- 开口在下方 → 数字可以放大且略上移 -->
+            <div class="numin" style="font-size:14.5px;font-weight:800;letter-spacing:-.7px;padding-bottom:2px">
+              99<span class="pc">%</span>
+            </div>
+          </div>
+          <div class="hero-txt">
+            <div class="row1"><span class="k">缓存命中率</span>
+              <span class="r"><span class="total">220.1M</span><span class="live"><i></i>Live</span></span></div>
+          </div>
+        </div>
+        <div class="row2"><span class="dot"></span><span class="m">u2-flash 82%</span></div>
+      </div>
+    </div>
+
+    <!-- ══════════ 5. 双色反衬环（剩余段高亮） ══════════ -->
+    <div>
+      <div class="label"><b>方案 5</b><span class="tag">双色反衬环</span></div>
+      <div class="demo">
+        <div class="demo-head"><span class="t">Token 用量</span><span class="v">220.1M Token</span></div>
+        <div class="hero">
+          <div class="ringbox" style="width:38px;height:38px">
+            <svg width="38" height="38" viewBox="0 0 38 38" style="overflow:visible">
+              <defs><linearGradient id="a5" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#c65f7f"/><stop offset="100%" stop-color="#ff8fab"/></linearGradient></defs>
+              <!-- 底圈：把"未命中那部分"画成淡粉，而不是留空 -->
+              <circle cx="19" cy="19" r="16" fill="none" stroke="rgba(198,95,127,.26)" stroke-width="3.4"/>
+              <!-- 进度：主色，留可见缺口让"差一点"显现 -->
+              <circle cx="19" cy="19" r="16" fill="none" stroke="url(#a5)" stroke-width="3.4"
+                      stroke-linecap="round" stroke-dasharray="95.5 5.03"
+                      transform="rotate(-90 19 19)"
+                      style="filter:drop-shadow(0 0 2.5px rgba(198,95,127,.4))"/>
+            </svg>
+            <div class="numin" style="font-size:12.5px;font-weight:800;letter-spacing:-.4px">
+              99<span class="pc">%</span>
+            </div>
+          </div>
+          <div class="hero-txt">
+            <div class="row1"><span class="k">缓存命中率</span>
+              <span class="r"><span class="total">220.1M</span><span class="live"><i></i>Live</span></span></div>
+          </div>
+        </div>
+        <div class="row2"><span class="dot"></span><span class="m">u2-flash 82%</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <b>五个方案的差异（都是「环 + 环内百分比」）</b>
+    <ul>
+      <li><b>方案 1 极细环 + 内衬底</b>：环 2px、直径 38px；数字背后有一层淡圆衬底，把数字和环"分层"，最清晰。数字 13px。</li>
+      <li><b>方案 2 粗环 + 内凹槽</b>：环 4.6px、端点是方切口（不用圆头，更机械）；内圈是压暗的凹槽，数字 11.5px 带投影。立体感最强。</li>
+      <li><b>方案 3 渐变环 + 渐变数字</b>：环 3.6px 圆头 + 外发光；<b>数字也用渐变</b>（background-clip:text），环与数字同色系呼应，最"科技"。</li>
+      <li><b>方案 4 开口仪表 + 大数字</b>：环开口 50°（正下方），可见弧 310°；进度终点有圆点标记；因为开口让出了视觉重心，数字可以放大到 14.5px。仪表感最强。</li>
+      <li><b>方案 5 双色反衬环</b>：底圈把"未命中部分"画成<b>淡粉色</b>而不是留空，于是 99% 时那 1% 是肉眼可见的浅粉段。语义最直白：一眼看出"差一点点"。</li>
+    </ul>
+    <br>
+    <b>技术差异</b>：1 用了内衬底圆；2 用径向压暗做凹槽 + 方端点；3 用 <code>background-clip:text</code> 做渐变数字；4 用大开口 + 末端 marker；5 用"底圈实色"替代"轨道留空"。
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="zh-CN" data-th="dark" data-mat="classic">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>缓存命中率指示器 七版候选</title>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   样张板：暗场 + 细网格 + 等宽标注
+   产品：dsh-quota-widget 用量小窗 260px 卡片头部 34px 指示器
+   ══════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:#07080b;color:#e9ebf4;
+  font:14px/1.65 ui-sans-serif,system-ui,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+  -webkit-font-smoothing:antialiased;
+  padding:0 0 132px;
+  transition:background .25s,color .25s;
+}
+body::before{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(to right,rgba(125,130,160,.10) 1px,transparent 1px),
+    linear-gradient(to bottom,rgba(125,130,160,.10) 1px,transparent 1px);
+  background-size:88px 88px;
+  mask-image:radial-gradient(120% 90% at 50% 0%,#000 0%,rgba(0,0,0,.5) 55%,transparent 88%);
+}
+html[data-th="light"] body{background:#e9ebf2;color:#181a22}
+
+/* ── 主题 / 材质变量（作用于全页，卡片只是继承）── */
+html[data-th="dark"]{
+  --num:#f2f3f9; --sub:#a3a6b8; --dim:#82869a;
+  --track:rgba(255,255,255,.13);
+  --ring:#ff93ab; --ring2:#ffc6d3;
+  --blue:#8aa6ff; --gold:#d8a54a; --live:#34d399;
+  --tile:rgba(255,255,255,.055); --tile-b:rgba(255,255,255,.08);
+  --card:#1a1a1f; --card-b:rgba(255,255,255,.08);
+  --hair:rgba(255,255,255,.10);
+  --ink:#e9ebf4; --ink2:#a2a6ba; --ink3:#7c8093;
+}
+html[data-th="light"]{
+  --num:#191b24; --sub:#5b5f70; --dim:#858a9c;
+  --track:rgba(16,20,40,.13);
+  --ring:#cf4a67; --ring2:#f0a2b3;
+  --blue:#4a63d8; --gold:#a3761a; --live:#0f8f6a;
+  --tile:rgba(16,20,40,.035); --tile-b:rgba(16,20,40,.08);
+  --card:#fff; --card-b:rgba(16,20,40,.10);
+  --hair:rgba(16,20,40,.10);
+  --ink:#181a22; --ink2:#4e5264; --ink3:#767b8d;
+}
+html[data-mat="paper"]{
+  --num:#2b2620; --sub:#6a6152; --dim:#948a78;
+  --track:rgba(120,100,70,.20);
+  --ring:#b0506a; --ring2:#d68b9d;
+  --blue:#4a63d8; --gold:#8a6114; --live:#2f7d5f;
+  --tile:rgba(255,255,255,.5); --tile-b:rgba(120,100,70,.18);
+  --card:#f8f3e8; --card-b:rgba(120,100,70,.22);
+  --hair:rgba(120,100,70,.20);
+  --ink:#2b2620; --ink2:#5f5748; --ink3:#8b8271;
+}
+
+/* ── 页头 ── */
+.mast{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:58px 40px 6px}
+.kicker{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  font-size:12px;letter-spacing:.14em;color:var(--ink3);
+}
+.kicker::before{content:"";width:6px;height:6px;border-radius:1px;background:var(--ring)}
+.mast h1{margin:14px 0 12px;font-size:28px;line-height:1.25;font-weight:680;letter-spacing:-.5px;color:var(--ink)}
+
+.lead{margin:0;max-width:760px;font-size:14.5px;color:var(--ink2)}
+.lead b{color:var(--ink);font-weight:640}
+.lead strong{color:var(--ring);font-weight:640}
+
+/* ── 诊断 ── */
+.diag{position:relative;z-index:1;max-width:1180px;margin:34px auto 0;padding:0 40px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0 28px}
+.diag div{border-top:1px solid var(--hair);padding:16px 0 4px}
+.diag h3{margin:0 0 6px;font-size:14px;font-weight:650;color:var(--ink);display:flex;align-items:center;gap:7px}
+.diag h3::before{content:"";width:4px;height:4px;border-radius:1px;background:var(--ring);flex:none}
+.diag p{margin:0;font-size:14px;line-height:1.7;color:var(--ink2)}
+.diag p b{color:var(--ink);font-weight:600}
+
+/* ── 工具条 ── */
+.toolbar{
+  position:sticky;top:0;z-index:30;margin-top:38px;
+  background:rgba(7,8,11,.86);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);
+  -webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);
+}
+html[data-th="light"] .toolbar{background:rgba(243,245,250,.9)}
+html[data-mat="paper"] .toolbar{background:rgba(248,243,232,.9)}
+.toolbar-in{max-width:1180px;margin:0 auto;padding:10px 40px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tb-label{font-size:12px;color:var(--ink3);letter-spacing:.06em}
+.seg{display:inline-flex;padding:2px;gap:2px;border-radius:8px;background:rgba(125,130,160,.12);border:1px solid var(--hair)}
+.seg button{appearance:none;border:0;background:none;color:var(--ink2);font:inherit;font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer;transition:.14s;white-space:nowrap}
+.seg button:hover{color:var(--ink)}
+.seg button.on{background:rgba(255,147,171,.18);color:var(--ring);font-weight:640;box-shadow:inset 0 0 0 1px rgba(255,147,171,.30)}
+.tb-grow{flex:1}
+.tb-hint{font-size:13px;color:var(--ink3)}
+
+/* ── 候选行 ── */
+main{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:0 40px}
+.cand{
+  display:grid;grid-template-columns:minmax(0,1fr) 556px;gap:40px;align-items:start;
+  padding:38px 0 34px;border-top:1px solid var(--hair);cursor:pointer;transition:background .16s;
+}
+.cand:hover{background:linear-gradient(90deg,rgba(255,147,171,.035),transparent 70%)}
+.cand:first-child{border-top:0}
+.cand-head{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.key{
+  font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:12px;font-weight:700;letter-spacing:.04em;
+  color:var(--ring);padding:2px 7px;border-radius:5px;background:rgba(255,147,171,.12);box-shadow:inset 0 0 0 1px rgba(255,147,171,.24);
+}
+.key.base{color:var(--ink3);background:rgba(125,130,160,.14);box-shadow:inset 0 0 0 1px var(--hair)}
+.cand h2{margin:0;font-size:19px;font-weight:660;letter-spacing:-.2px;color:var(--ink)}
+.en{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:12px;color:var(--ink3);letter-spacing:.04em}
+.fam{margin-left:auto;font-size:12px;color:var(--ink2);padding:2px 8px;border-radius:999px;border:1px solid var(--hair)}
+.pos{margin:12px 0 14px;font-size:14px;color:var(--ink2)}
+.spec{display:grid;grid-template-columns:44px minmax(0,1fr);gap:7px 14px;margin:0}
+.spec dt{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:12px;color:var(--ink3);padding-top:3px;letter-spacing:.02em}
+.spec dd{margin:0;font-size:14px;line-height:1.55;color:var(--ink2)}
+.spec dd b{color:var(--ink);font-weight:600}
+.note{margin:13px 0 0;font-size:14px;line-height:1.7;color:var(--ink2);padding-left:12px;border-left:1px solid var(--hair)}
+.note b{color:var(--ink);font-weight:600}
+.note.warn b{color:#d99b4e}
+html[data-th="light"] .note.warn b{color:#a8671a}
+
+/* ── 预览区 ── */
+.cand-view{display:grid;grid-template-columns:288px minmax(0,1fr);gap:20px 22px;grid-template-areas:"real zoom" "states states"}
+.real{grid-area:real}
+.zoom{grid-area:zoom}
+.states{grid-area:states}
+.cap{display:block;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:12px;color:var(--ink3);letter-spacing:.02em;margin-bottom:8px}
+
+.stage{
+  padding:14px;border-radius:18px;border:1px solid var(--hair);
+  background:
+    radial-gradient(230px 170px at 18% 8%,rgba(139,123,255,.26),transparent 72%),
+    radial-gradient(210px 160px at 92% 96%,rgba(14,165,233,.20),transparent 74%),
+    #0b0d13;
+  transition:background .25s;
+}
+html[data-th="light"] .stage{
+  background:
+    radial-gradient(230px 170px at 18% 8%,rgba(139,123,255,.16),transparent 72%),
+    radial-gradient(210px 160px at 92% 96%,rgba(14,165,233,.14),transparent 74%),
+    #eef0f7;
+}
+
+/* ── 卡片复刻（尺寸 / 字号 / 间距对齐 lib/client.js 真机）── */
+.card{
+  width:260px;border-radius:14px;padding:6px;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;gap:6px;
+  background:var(--card);border:1px solid var(--card-b);box-shadow:0 10px 30px rgba(0,0,0,.35);
+  transition:background .25s,border-color .25s;
+}
+html[data-th="light"] .card{box-shadow:0 10px 28px rgba(30,36,60,.16)}
+html[data-mat="liquid"] .card{
+  background:
+    radial-gradient(150% 95% at 14% -14%,rgba(255,255,255,.16),transparent 56%),
+    radial-gradient(130% 90% at 92% 118%,rgba(139,123,255,.20),transparent 64%),
+    rgba(22,24,34,.44);
+  -webkit-backdrop-filter:blur(16px) saturate(190%) brightness(1.05);
+  backdrop-filter:blur(16px) saturate(190%) brightness(1.05);
+  border-color:rgba(255,255,255,.15);
+  box-shadow:0 22px 48px -18px rgba(0,0,0,.72),inset 0 1px 1px rgba(255,255,255,.36);
+}
+html[data-mat="liquid"][data-th="light"] .card{
+  background:
+    radial-gradient(150% 95% at 14% -14%,rgba(255,255,255,.9),transparent 58%),
+    radial-gradient(130% 90% at 92% 118%,rgba(139,123,255,.18),transparent 64%),
+    rgba(255,255,255,.46);
+  border-color:rgba(255,255,255,.85);
+}
+html[data-mat="paper"] .card{
+  background:#f8f3e8;
+  box-shadow:0 14px 30px -14px rgba(61,50,30,.35),inset 0 1px 0 rgba(255,255,255,.85);
+}
+
+/* 头部行：40px，与产品一致 */
+.hdr{display:flex;align-items:center;gap:8px;height:40px;padding:0 2px}
+.hdr-ring{flex:none;display:flex;align-items:center;justify-content:center}
+.hdr-col{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:3px}
+.hdr-r1{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.hdr-lbl{font-size:11px;font-weight:600;color:var(--ring);white-space:nowrap}
+.hdr-right{display:flex;align-items:center;gap:8px;flex:none}
+.hdr-tot{font-size:11px;font-weight:600;color:var(--num);white-space:nowrap;font-variant-numeric:tabular-nums}
+.hdr-live{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;color:var(--live);white-space:nowrap}
+.hdr-live i{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
+.hdr-r2{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--num);white-space:nowrap;overflow:hidden}
+.hdr-r2 i{width:7px;height:7px;border-radius:50%;background:var(--blue);flex:none}
+.hdr-r2 s{text-decoration:none;color:var(--dim);font-weight:500}
+
+/* 卡片其余部分（用来说明上下文，不在候选比较范围内） */
+.ranges{display:flex;gap:4px}
+.ranges span{flex:1;text-align:center;padding:3px 0;font-size:10px;border-radius:999px;border:1px solid var(--tile-b);color:var(--sub)}
+.ranges span.on{border-color:rgba(109,91,255,.5);background:rgba(109,91,255,.14);color:#a294ff;font-weight:700}
+html[data-th="light"] .ranges span.on{color:#5a48c8}
+.bars{display:flex;align-items:flex-end;gap:3px;height:34px;padding:0 2px}
+.bars i{flex:1;border-radius:3px;background:rgba(109,91,255,.42);display:block}
+.bars i.on{background:linear-gradient(180deg,#a8bdf0,#6a7fc8)}
+.tile{background:var(--tile);border:1px solid var(--tile-b);border-radius:8px;padding:5px 6px;display:flex;flex-direction:column;gap:4px}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.three .i1{color:var(--blue)} .three .i2{color:var(--gold);text-align:center} .three .i3{color:var(--ring);text-align:right}
+.pills{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr) minmax(0,1.1fr);gap:4px}
+.pill{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:1px 4px;border-radius:999px;background:var(--tile);border:1px solid var(--tile-b);font-size:10px;line-height:1.25;white-space:nowrap;overflow:hidden}
+.pill b{font-weight:700}
+.pill .k{color:var(--dim);font-weight:500}
+.pill.c1 b{color:var(--blue)} .pill.c2 b{color:var(--gold)} .pill.c3 b{color:var(--ring)}
+
+/* 3× 特写：网格底 + 十字准线 */
+.zoombox{
+  width:124px;height:124px;border-radius:12px;display:grid;place-items:center;border:1px solid var(--hair);
+  background:
+    linear-gradient(to right,rgba(125,130,160,.10) 1px,transparent 1px) 0 0/20px 20px,
+    linear-gradient(to bottom,rgba(125,130,160,.10) 1px,transparent 1px) 0 0/20px 20px,
+    #0c0e14;
+  position:relative;
+}
+html[data-th="light"] .zoombox{background:
+    linear-gradient(to right,rgba(16,20,40,.07) 1px,transparent 1px) 0 0/20px 20px,
+    linear-gradient(to bottom,rgba(16,20,40,.07) 1px,transparent 1px) 0 0/20px 20px,
+    #f2f4fa}
+.zoombox::before,.zoombox::after{content:"";position:absolute;background:var(--hair)}
+.zoombox::before{left:50%;top:8px;bottom:8px;width:1px}
+.zoombox::after{top:50%;left:8px;right:8px;height:1px}
+
+/* 状态条 */
+.staterow{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.st{display:flex;flex-direction:column;align-items:center;gap:6px}
+.st .box{width:36px;height:36px;display:grid;place-items:center}
+.st em{font-style:normal;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:12px;color:var(--ink3)}
+
+/* 选择态 */
+.cand.on{background:linear-gradient(90deg,rgba(255,147,171,.06),rgba(255,147,171,.012) 60%,transparent)}
+.cand.on .key{background:var(--ring);color:#16070c;box-shadow:none}
+.sel-btn{appearance:none;font:inherit;font-size:12px;color:var(--ink2);cursor:pointer;padding:3px 10px;border-radius:999px;border:1px solid var(--hair);background:none;transition:.14s;white-space:nowrap}
+.sel-btn:hover{border-color:rgba(255,147,171,.55);color:var(--ring)}
+.cand.on .sel-btn{background:rgba(255,147,171,.16);border-color:rgba(255,147,171,.5);color:var(--ring);font-weight:640}
+
+/* 页脚 */
+.foot{position:relative;z-index:1;max-width:1180px;margin:56px auto 0;padding:26px 40px 0;border-top:1px solid var(--hair)}
+.foot h3{margin:0 0 10px;font-size:13px;font-weight:650;color:var(--ink);letter-spacing:.02em}
+.foot ul{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 28px}
+.foot li{font-size:14px;line-height:1.7;color:var(--ink2);padding-left:14px;position:relative}
+.foot li::before{content:"";position:absolute;left:0;top:9px;width:5px;height:1px;background:var(--ring)}
+.foot code{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#a98cff;background:rgba(125,130,160,.14);padding:1px 5px;border-radius:4px}
+html[data-th="light"] .foot code{color:#5a48c8}
+
+/* 底部选择条 */
+.pickbar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(10,11,16,.93);border-top:1px solid rgba(255,147,171,.28);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+html[data-th="light"] .pickbar{background:rgba(250,250,253,.94)}
+.pickbar-in{max-width:1180px;margin:0 auto;padding:13px 40px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pickbar .lb{font-size:13px;color:var(--ink3)}
+.pickchips{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.pickchip{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--ring);padding:3px 9px;border-radius:6px;background:rgba(255,147,171,.14);border:1px solid rgba(255,147,171,.3)}
+.pickbar button{appearance:none;font:inherit;font-size:12px;cursor:pointer;padding:5px 12px;border-radius:7px;border:1px solid var(--hair);background:none;color:var(--ink2)}
+.pickbar button:hover{border-color:rgba(255,147,171,.5);color:var(--ink)}
+.pickbar button.primary{background:var(--ring);border-color:var(--ring);color:#1a0710;font-weight:700}
+
+@media (max-width:1100px){
+  .mast,.diag,.toolbar-in,main,.foot,.pickbar-in{padding-left:22px;padding-right:22px}
+  .diag{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px}
+  .cand{grid-template-columns:minmax(0,1fr);gap:26px}
+  .foot ul{grid-template-columns:1fr}
+}
+@media (max-width:560px){
+  .cand-view{grid-template-columns:288px;grid-template-areas:"real" "zoom" "states"}
+  .mast h1{font-size:23px}
+}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <span class="kicker">用量小窗头部指示器</span>
+  <h1>缓存命中率圆环，七版候选</h1>
+  <p class="lead">
+    现在这版是「34px 环 + 6px 环宽 + 11px 数字」。它在 260px 卡片的头部里同时扮演<strong>进度</strong>和<strong>标题</strong>两个角色，结果两个都没做到位。
+    下面七版按三种逻辑拆开——<b>克制</b>（环退后、数字上前）、<b>仪表</b>（环变成量具）、<b>数据</b>（环自己承载口径），外加一版<b>材质</b>派。
+    每版都给真机 1×、3× 特写和六种状态：<b>100 / 99 / 72 / 34 / 8 / 无数据</b>。
+  </p>
+</header>
+
+<section class="diag">
+  <div>
+    <h3>内孔被环宽吃掉</h3>
+    <p>环宽 6px，意味着半径 14px 里有 3px 是描边，剩下的洞只有 <b>22px</b>。11px 的「99%」宽约 22px——刚好顶住内壁，看着像塞进轮胎里。</p>
+  </div>
+  <div>
+    <h3>100% 会撑破内孔</h3>
+    <p>三位数「100%」在 11px 下约 27px 宽，比 22px 的洞还大。现状代码没做字数降级，命中率真到 100% 时数字会压在环上。</p>
+  </div>
+  <div>
+    <h3>缺口规则不讲道理</h3>
+    <p>为了「99% 不能等于 100%」，缺口被设成<b>整整一个环宽</b>（约 6.5% 弧长）。于是 92% 和 99% 看起来一样缺——留白的量级和数值脱钩。</p>
+  </div>
+  <div>
+    <h3>粉色是装饰，不是语义</h3>
+    <p>输入是蓝、输出是金、缓存是粉，环也用粉。但环表示的是「命中率」这个<b>派生值</b>，它和“缓存”的颜色继承关系没有任何人知道。</p>
+  </div>
+</section>
+
+<div class="toolbar">
+  <div class="toolbar-in">
+    <span class="tb-label">主题</span>
+    <div class="seg" id="thSeg">
+      <button data-th="dark" class="on">暗色</button>
+      <button data-th="light">亮色</button>
+    </div>
+    <span class="tb-label" style="margin-left:8px">材质</span>
+    <div class="seg" id="matSeg">
+      <button data-mat="classic" class="on">经典背板</button>
+      <button data-mat="liquid">液态玻璃</button>
+      <button data-mat="paper">哑光纸</button>
+    </div>
+    <span class="tb-grow"></span>
+    <span class="tb-hint">点任意候选行标记选择，三种材质都要过一遍</span>
+  </div>
+</div>
+
+<main id="list"></main>
+
+<footer class="foot">
+  <h3>落地说明</h3>
+  <ul>
+    <li>全部纯 SVG / CSS，无图片、无动画库。接回 <code>lib/client.js</code> 只需替换 <code>ringEl()</code> 的 children，调用点不动。</li>
+    <li>真机 1× 是 260px 卡片头部，字号沿用产品实际值（10–11px）；3× 特写用来看几何是否成立，不是放大后的实际字号。</li>
+    <li>材质矩阵是硬约束：液态玻璃下白色轨道会消失、哑光纸下粉色发灰。上面三档切换就是用来验这个的。</li>
+  </ul>
+</footer>
+
+<div class="pickbar" id="pickbar" hidden>
+  <div class="pickbar-in">
+    <span class="lb">已标记</span>
+    <div class="pickchips" id="pickchips"></div>
+    <button id="copyBtn" class="primary">复制选择</button>
+    <button id="clearBtn">清空</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ══════════════ 几何工具 ══════════════ */
+  var uid = 0;
+  function nid(){ uid += 1; return "g" + uid; }
+  function pt(cx, cy, r, deg){
+    var a = (deg - 90) * Math.PI / 180;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  }
+  function arc(cx, cy, r, a0, a1){
+    if (a1 - a0 >= 359.9) {
+      return "M" + cx + " " + (cy - r) +
+             " A" + r + " " + r + " 0 1 1 " + cx + " " + (cy + r) +
+             " A" + r + " " + r + " 0 1 1 " + cx + " " + (cy - r);
+    }
+    var p0 = pt(cx, cy, r, a0), p1 = pt(cx, cy, r, a1);
+    var large = (a1 - a0) > 180 ? 1 : 0;
+    return "M" + p0[0].toFixed(2) + " " + p0[1].toFixed(2) +
+           " A" + r + " " + r + " 0 " + large + " 1 " + p1[0].toFixed(2) + " " + p1[1].toFixed(2);
+  }
+  // 文字宽度估算。降级顺序：先降字号到下限，仍放不下才丢掉「%」——
+  // 宁可少一个单位符号，也不把数字压到读不清（旁边标题已经写明是命中率）。
+  function fitText(pct, fs, minFs, maxW){
+    var s = (pct == null) ? "—" : String(Math.round(pct));
+    var hasSign = pct != null;
+    function w(f, sign){ return s.length * 0.60 * f + (sign ? 0.44 * f + 1 : 0); }
+    while (w(fs, hasSign) > maxW && fs > minFs) fs -= 0.25;
+    if (w(fs, hasSign) > maxW) hasSign = false;
+    return { fs: fs, sign: hasSign };
+  }
+  // opts: { fs, minFs, maxW, fill, shadow, dy, noFit }
+  function numText(cx, cy, pct, opts){
+    opts = opts || {};
+    var base = opts.fs || 11;
+    var fit = opts.noFit ? { fs: base, sign: pct != null }
+                         : fitText(pct, base, opts.minFs || 9.5, opts.maxW || 999);
+    var fs = fit.fs;
+    var t = (pct == null) ? "—" : String(Math.round(pct));
+    var sign = fit.sign ? '<tspan style="font-size:' + (fs * 0.62).toFixed(1) + 'px;font-weight:700">%</tspan>' : "";
+    var st = "font-size:" + fs.toFixed(2) + "px;font-weight:700;fill:" + (opts.fill || "var(--num)") +
+             ";font-variant-numeric:tabular-nums;letter-spacing:-.2px";
+    if (opts.shadow) st += ";paint-order:stroke;stroke:rgba(0,0,0,.42);stroke-width:" + (fs * 0.17).toFixed(1) + "px";
+    return '<text x="' + cx + '" y="' + (cy + (opts.dy || 0)) + '" text-anchor="middle" dominant-baseline="central" style="' +
+      st + '">' + t + sign + "</text>";
+  }
+  function box(inner, S, disp){
+    return '<svg viewBox="0 0 ' + S + " " + S + '" width="' + disp + '" height="' + disp +
+      '" style="display:block;overflow:visible" role="img" aria-label="缓存命中率">' + inner + "</svg>";
+  }
+
+  /* ══════════════ 0 · 现状（照抄 lib/client.js 的 ringEl） ══════════════ */
+  function ringNow(pct, S){
+    S = S || 34;
+    var cx = S / 2, sw = 6, r = (S - sw) / 2, c = 2 * Math.PI * r;
+    var has = pct != null, p = Math.max(0, Math.min(100, pct || 0));
+    var full = has && p >= 100;
+    var gapLen = full ? 0 : sw;
+    var dash = full ? 0 : Math.max(0, c * p / 100 - gapLen);
+    var id = nid();
+    return '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="1" y2="1">' +
+        '<stop offset="0%" stop-color="#c65f7f"/><stop offset="100%" stop-color="#ff8fab"/></linearGradient></defs>' +
+      '<circle cx="' + cx + '" cy="' + cx + '" r="' + r + '" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="' + sw + '"/>' +
+      (has ? '<circle cx="' + cx + '" cy="' + cx + '" r="' + r + '" fill="none" stroke="url(#' + id + ')" stroke-width="' + sw +
+        '" stroke-linecap="round" stroke-dasharray="' + (full ? c.toFixed(1) + " " + c.toFixed(1) : dash.toFixed(1) + " " + (c - dash).toFixed(1)) +
+        '" transform="rotate(-90 ' + cx + " " + cx + ')" style="filter:drop-shadow(0 0 3px rgba(198,95,127,.45))"/>' : "") +
+      numText(cx, cx, pct, { fs: 11, noFit: true });
+  }
+
+  /* ══════════════ A · 微光细环 ══════════════ */
+  function ringA(pct, S){
+    S = S || 34;
+    var cx = S / 2, sw = 3, r = (S - sw) / 2 - 0.9, c = 2 * Math.PI * r;
+    var has = pct != null, p = Math.max(0, Math.min(100, pct || 0));
+    var sweep = 0;
+    if (has) sweep = (p >= 100 ? c : Math.max(1.2, c * p / 100 - 3.2)) / c * 360;
+    var head = pt(cx, cx, r, sweep);
+    var id = nid();
+    return '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="1" y2="1">' +
+        '<stop offset="0%" style="stop-color:var(--ring2)"/><stop offset="100%" style="stop-color:var(--ring)"/></linearGradient></defs>' +
+      '<circle cx="' + cx + '" cy="' + cx + '" r="' + r + '" fill="none" style="stroke:var(--track)" stroke-width="' + sw + '"/>' +
+      (has && p > 0 ? '<path d="' + arc(cx, cx, r, 0, sweep) + '" fill="none" style="stroke:url(#' + id +
+        ');filter:drop-shadow(0 0 2.5px var(--ring))" stroke-width="' + sw + '" stroke-linecap="round"/>' : "") +
+      (has && p > 0 && p < 100 ? '<circle cx="' + head[0].toFixed(2) + '" cy="' + head[1].toFixed(2) +
+        '" r="1.8" style="fill:var(--ring2);filter:drop-shadow(0 0 2px var(--ring))"/>' : "") +
+      numText(cx, cx + 0.3, pct, { fs: 11, maxW: 25 });
+  }
+
+  /* ══════════════ B · 语义双色环 ══════════════ */
+  function ringB(pct, S){
+    S = S || 34;
+    var cx = S / 2, sw = 5, r = (S - sw) / 2, c = 2 * Math.PI * r;
+    var has = pct != null, p = Math.max(0, Math.min(100, pct || 0));
+    var gapD = 1.6 / c * 360, cacheD = 0, freshD = 0;
+    if (has) {
+      if (p >= 99.6) { cacheD = 360; freshD = 0; }
+      else {
+        var freshPx = Math.max(1.5, c * (100 - p) / 100);
+        freshD = freshPx / c * 360;
+        cacheD = 360 - gapD * 2 - freshD;
+      }
+    }
+    var out = '<circle cx="' + cx + '" cy="' + cx + '" r="' + r + '" fill="none" style="stroke:var(--track);opacity:.55" stroke-width="' + sw + '"/>';
+    if (has && cacheD > 0) out += '<path d="' + arc(cx, cx, r, 0, cacheD) + '" fill="none" style="stroke:var(--ring)" stroke-width="' + sw + '"/>';
+    if (has && freshD > 0) out += '<path d="' + arc(cx, cx, r, cacheD + gapD * 2, 360) + '" fill="none" style="stroke:var(--blue)" stroke-width="' + sw + '"/>';
+    return out + numText(cx, cx, pct, { fs: 10, maxW: 21, minFs: 9 });
+  }
+
+  /* ══════════════ C · 270° 仪表弧 ══════════════ */
+  function ringC(pct, S){
+    S = S || 34;
+    var cx = S / 2, sw = 4, r = (S - sw) / 2 - 1.4;
+    var has = pct != null, p = Math.max(0, Math.min(100, pct || 0));
+    var a0 = 225, sweepMax = 270, sweep = sweepMax * p / 100;
+    var tick = function(deg){
+      var a = pt(cx, cx, r - sw / 2 + 0.4, deg), b = pt(cx, cx, r + sw / 2 - 0.4, deg);
+      return '<line x1="' + a[0].toFixed(2) + '" y1="' + a[1].toFixed(2) + '" x2="' + b[0].toFixed(2) + '" y2="' + b[1].toFixed(2) +
+        '" style="stroke:var(--track)" stroke-width="1.1" stroke-linecap="round"/>';
+    };
+    return '<path d="' + arc(cx, cx, r, a0, a0 + sweepMax) + '" fill="none" style="stroke:var(--track)" stroke-width="' + sw + '" stroke-linecap="round"/>' +
+      tick(a0) + tick(a0 + sweepMax) +
+      (has && sweep > 0.6 ? '<path d="' + arc(cx, cx, r, a0, a0 + sweep) +
+        '" fill="none" style="stroke:var(--ring);filter:drop-shadow(0 0 3px var(--ring))" stroke-width="' + sw + '" stroke-linecap="round"/>' : "") +
+      numText(cx, cx + 2.2, pct, { fs: 10.5, maxW: 21, minFs: 9 });
+  }
+
+  /* ══════════════ D · 十格分段环 ══════════════ */
+  function ringD(pct, S){
+    S = S || 34;
+    var cx = S / 2, sw = 4.2, r = (S - sw) / 2 - 0.3;
+    var has = pct != null, p = Math.max(0, Math.min(100, pct || 0));
+    var track = "", fill = "";
+    for (var i = 0; i < 10; i++) {
+      var start = i * 36 + 3.4, end = i * 36 + 32.6;
+      track += '<path d="' + arc(cx, cx, r, start, end) + '" fill="none" style="stroke:var(--track)" stroke-width="' + sw + '"/>';
+      var frac = has ? Math.max(0, Math.min(1, (p - i * 10) / 10)) : 0;
+      if (frac > 0) {
+        fill += '<path d="' + arc(cx, cx, r, start, start + (end - start) * frac) +
+          '" fill="none" style="stroke:var(--ring)" stroke-width="' + sw + '"/>';
+      }
+    }
+    return track + fill + numText(cx, cx, pct, { fs: 9.6, maxW: 19, minFs: 8.6 });
+  }
+
+  /* ══════════════ E · 刻度盘 ══════════════ */
+  function ringE(pct, S){
+    S = S || 34;
+    var cx = S / 2;
+    var has = pct != null, p = Math.max(0, Math.min(100, pct || 0));
+    var ticks = 24, tick = "";
+    for (var i = 0; i < ticks; i++) {
+      var deg = i * (360 / ticks);
+      var on = has && p >= (i + 1) / ticks * 100 - 0.01;
+      var r1 = 13.4, r2 = on ? 16 : 15.2;
+      var a = pt(cx, cx, r1, deg), b = pt(cx, cx, r2, deg);
+      tick += '<line x1="' + a[0].toFixed(2) + '" y1="' + a[1].toFixed(2) + '" x2="' + b[0].toFixed(2) + '" y2="' + b[1].toFixed(2) +
+        '" style="stroke:' + (on ? "var(--ring)" : "var(--track)") + '" stroke-width="' + (on ? 1.5 : 1.2) + '" stroke-linecap="round"/>';
+    }
+    var mark = "";
+    if (has && p > 0 && p < 100) {
+      var m0 = pt(cx, cx, 11.4, p * 3.6), m1 = pt(cx, cx, 16, p * 3.6);
+      mark = '<line x1="' + m0[0].toFixed(2) + '" y1="' + m0[1].toFixed(2) + '" x2="' + m1[0].toFixed(2) + '" y2="' + m1[1].toFixed(2) +
+        '" style="stroke:var(--ring2);filter:drop-shadow(0 0 2px var(--ring))" stroke-width="1.7" stroke-linecap="round"/>';
+    }
+    return tick + mark + numText(cx, cx, pct, { fs: 9, maxW: 17, minFs: 8.2 });
+  }
+
+  /* ══════════════ F · 玻璃质感环 ══════════════ */
+  function ringF(pct, S){
+    S = S || 36;
+    var cx = S / 2, sw = 3.4, r = (S - sw) / 2 - 1.6, c = 2 * Math.PI * r;
+    var has = pct != null, p = Math.max(0, Math.min(100, pct || 0));
+    var sweep = has ? (p >= 100 ? c : Math.max(1.2, c * p / 100 - 3.4)) / c * 360 : 0;
+    var g1 = nid(), g2 = nid(), g3 = nid();
+    return '<defs>' +
+        '<radialGradient id="' + g1 + '" cx="34%" cy="24%" r="82%">' +
+          '<stop offset="0%" stop-color="rgba(255,255,255,.20)"/><stop offset="58%" stop-color="rgba(255,255,255,.05)"/>' +
+          '<stop offset="100%" stop-color="rgba(0,0,0,.22)"/></radialGradient>' +
+        '<linearGradient id="' + g2 + '" x1="0" y1="0" x2="1" y2="1">' +
+          '<stop offset="0%" style="stop-color:var(--ring2)"/><stop offset="55%" style="stop-color:var(--ring)"/>' +
+          '<stop offset="100%" style="stop-color:var(--ring2)"/></linearGradient>' +
+        '<linearGradient id="' + g3 + '" x1="0" y1="0" x2="1" y2="1">' +
+          '<stop offset="0%" stop-color="rgba(255,255,255,.62)"/><stop offset="100%" stop-color="rgba(255,255,255,0)"/></linearGradient>' +
+      "</defs>" +
+      '<circle cx="' + cx + '" cy="' + cx + '" r="' + (S / 2 - 0.7) + '" fill="url(#' + g1 + ')" style="stroke:var(--track)" stroke-width=".8"/>' +
+      '<circle cx="' + cx + '" cy="' + cx + '" r="' + (r - sw / 2 - 1.4) + '" fill="none" style="stroke:rgba(255,255,255,.07)" stroke-width=".7"/>' +
+      (has && p > 0 ? '<path d="' + arc(cx, cx, r, 0, sweep) + '" fill="none" style="stroke:url(#' + g2 +
+        ');filter:drop-shadow(0 0 4px var(--ring))" stroke-width="' + sw + '" stroke-linecap="round"/>' : "") +
+      '<path d="' + arc(cx, cx, r, 292, 340) + '" fill="none" stroke="url(#' + g3 + ')" stroke-width="1.6" stroke-linecap="round" opacity=".8"/>' +
+      numText(cx, cx + 0.3, pct, { fs: 11, maxW: 26, shadow: true });
+  }
+
+  /* ══════════════ G · 数字主导 ══════════════ */
+  function blockG(pct, scale){
+    var k = scale || 1;
+    var has = pct != null, p = has ? Math.max(0, Math.min(100, pct)) : 0;
+    return '<div style="width:' + (46 * k) + "px;height:" + (36 * k) + "px;display:flex;flex-direction:column;justify-content:center;gap:" + (4 * k) + 'px">' +
+      '<div style="font-size:' + (15 * k) + "px;line-height:1;font-weight:750;letter-spacing:-.6px;font-variant-numeric:tabular-nums;color:var(--num);white-space:nowrap\">" +
+        (has ? Math.round(p) + '<span style="font-size:' + (8 * k) + "px;font-weight:700;letter-spacing:0;margin-left:1px;color:var(--ring)\">%" : "—") +
+      "</div>" +
+      '<div style="height:' + (3 * k) + "px;border-radius:999px;background:var(--track);overflow:hidden\">" +
+        '<i style="display:block;height:100%;width:' + p + "%;border-radius:999px;background:linear-gradient(90deg,var(--ring2),var(--ring));box-shadow:0 0 6px var(--ring)\"></i>" +
+      "</div></div>";
+  }
+
+  var RING = { A: ringA, B: ringB, C: ringC, D: ringD, E: ringE, F: ringF, NOW: ringNow };
+  var SIZE = { A: 34, B: 34, C: 34, D: 34, E: 34, F: 36, NOW: 34 };
+
+  function draw(key, pct, disp, scale){
+    if (key === "G") return blockG(pct, scale || 1);
+    var S = SIZE[key] || 34;
+    return box(RING[key](pct, S), S, disp || S);
+  }
+
+  /* ══════════════ 卡片复刻 ══════════════ */
+  function cardHead(key, pct){
+    var w = key === "G" ? 46 : (SIZE[key] || 34);
+    var h = key === "G" ? 36 : (SIZE[key] || 34);
+    return '<div class="hdr">' +
+      '<div class="hdr-ring" style="width:' + w + "px;height:" + h + 'px">' + draw(key, pct) + "</div>" +
+      '<div class="hdr-col">' +
+        '<div class="hdr-r1"><span class="hdr-lbl">缓存命中率</span>' +
+          '<span class="hdr-right"><span class="hdr-tot">220.4M Token</span>' +
+          '<span class="hdr-live"><i></i>Live</span></span></div>' +
+        '<div class="hdr-r2"><i></i>deepseek-v4.1-flash<s>94%</s></div>' +
+      "</div></div>";
+  }
+  function fullCard(key, pct){
+    var bars = [42, 66, 28, 84, 52, 74, 38].map(function(h, i){
+      return '<i class="' + (i === 3 ? "on" : "") + '" style="height:' + h + '%"></i>';
+    }).join("");
+    return '<div class="stage"><div class="card">' +
+      cardHead(key, pct) +
+      '<div class="ranges"><span class="on">今日</span><span>7天</span><span>30天</span><span>90天</span><span>全部</span></div>' +
+      '<div class="bars">' + bars + "</div>" +
+      '<div class="tile">' +
+        '<div class="three"><span class="i1">输入 219.2M</span><span class="i2">输出 1.1M</span><span class="i3">缓存 216.8M</span></div>' +
+        '<div class="pills"><span class="pill c1"><span class="k">轮次</span><b>61</b></span>' +
+          '<span class="pill c2"><span class="k">步数</span><b>1252</b></span>' +
+          '<span class="pill c3"><span class="k">工具</span><b>1382</b></span></div>' +
+        '<div class="pills"><span class="pill c2"><span class="k">请求</span><b>1250</b></span>' +
+          '<span class="pill c1"><span class="k">速度</span><b>86 T/s</b></span></div>' +
+      "</div></div></div>";
+  }
+  function headerCard(key, pct){
+    return '<div class="stage"><div class="card">' + cardHead(key, pct) + "</div></div>";
+  }
+  function zoomBox(key, pct){
+    return '<div class="zoombox">' + draw(key, pct, key === "G" ? 138 : (SIZE[key] || 34) * 3, 3) + "</div>";
+  }
+  function stateRow(key){
+    var states = [100, 99, 72, 34, 8, null];
+    var bw = key === "G" ? 50 : 38;
+    return '<div class="staterow">' + states.map(function(s){
+      return '<div class="st"><div class="box" style="width:' + bw + 'px">' + draw(key, s) + "</div><em>" +
+        (s == null ? "—" : s + "%") + "</em></div>";
+    }).join("") + "</div>";
+  }
+
+  /* ══════════════ 候选定义 ══════════════ */
+  var CANDS = [
+    {
+      k: "A", name: "微光细环", en: "Hairline", fam: "克制",
+      pos: "环退回背景，数字重新当主角；弧尾一枚高亮点告诉你“还差一点”。",
+      spec: [
+        ["环", "3px 轨道 + 3px 发丝弧，圆头"],
+        ["端点", "弧尾一枚 1.8px 高亮圆点，比环亮一档"],
+        ["数字", "11px / 700，内孔 26px；三位数自动降字"],
+        ["缺口", "固定 3.2px 弧长，不随数值放大"],
+        ["成本", "S 级，单个 SVG，14 行"]
+      ],
+      when: "想要「环还在，但不抢戏」，且卡片会用液态玻璃 / 亚克力材质——细环在模糊底上比粗环干净得多。",
+      risk: "1× DPR 下 3px 弧略虚；信息量最低，99% 与 96% 只能靠数字分辨。"
+    },
+    {
+      k: "B", name: "语义双色环", en: "Split", fam: "数据",
+      pos: "环表示「窗口内全部输入 token」：粉色是命中缓存的部分，蓝色是新增部分——环自己带了口径。",
+      spec: [
+        ["环", "5px 平头（no round cap），两段之间留 1.6px 缝"],
+        ["配色", "粉 = 缓存读，蓝 = 新增输入（沿用卡片里那两个语义色）"],
+        ["数字", "10px / 700 居中，内孔 24px；三位数降到 9px"],
+        ["边界", "新增段最小 1.5px，与进度条的 minWidth 同一套兜底"],
+        ["成本", "S 级，两条 path，10 行"]
+      ],
+      when: "你想让环“有内容”，并且愿意接受它比现在更花一点。它和下方「输入 / 输出 / 缓存」那行数字互相呼应。",
+      risk: "99% 时蓝色只剩一条发丝，容易被读成掉漆；新增占比极低时，信息密度反而不如纯色。"
+    },
+    {
+      k: "C", name: "270° 仪表弧", en: "Gauge", fam: "仪表",
+      pos: "不闭合的弧，两端各一枚刻度。读起来像量具，而不是一个装饰圆。",
+      spec: [
+        ["弧", "4px，225° → 495°，底部留 90° 开口"],
+        ["端点", "起止各一枚 1.1px 短刻度，标出量程"],
+        ["数字", "10.5px / 700，光心下移 2.2px 补齐视觉重心；三位数降到 9px"],
+        ["缺口", "缺口由形态决定（90°），不再和数值抢空间"],
+        ["成本", "S 级，弧 + 两条线，12 行"]
+      ],
+      when: "你更喜欢“仪器感”，或者这个数字之后还要接阈值（例如 <60% 变黄）——开口天然能挂警示。",
+      risk: "占位比圆环高一点；弧内可写面积为七版最小，三位数必须降到 9.5px。"
+    },
+    {
+      k: "D", name: "十格分段环", en: "Segments", fam: "数据",
+      pos: "把百分比量化成 10 格，最后一格按小数填充。不用读数字就知道大概到哪。",
+      spec: [
+        ["环", "10 段，每段 29.2°弧 + 6.8° 缝，4.2px 平头"],
+        ["填充", "整格实色，末格按百分比部分填充"],
+        ["数字", "9.6px / 700，内孔 21px；三位数降到 8.6px"],
+        ["缺口", "缝由分格决定；99% 与 100% 靠末格区分"],
+        ["成本", "S 级，循环 10 次，16 行"]
+      ],
+      when: "想要“一眼可数”，并且不介意粗糙——它的精度是 10%，比连续弧诚实，也更好读。",
+      risk: "每格约 3.9px，缝隙在 1× 下会糊；低端屏可能读成一圈实心环。"
+    },
+    {
+      k: "E", name: "刻度盘", en: "Dial", fam: "仪表",
+      pos: "24 枚刻度做量程，值以下全部点亮，再给当前值一枚更亮的长刻度。最“工程”的一版。",
+      spec: [
+        ["刻度", "24 枚，13.4 → 15.2 / 16px；点亮后变长变粗"],
+        ["指示", "当前值一枚 1.7px 高亮长刻度（11.4 → 16px）"],
+        ["数字", "9px / 700，居中；三位数降到 8.2px"],
+        ["缺口", "无环，本身没有缺口概念"],
+        ["成本", "M 级，24 条 line，22 行"]
+      ],
+      when: "你想让整个小窗统一成“仪表”气质（和下方热力格、KPI 同一族），并且能接受更小的数字。",
+      risk: "24 条刻度在 1× 下偏密；99% 与 100% 的刻度位置只差 3.6°，等于放弃这个区分——只能靠数字补。"
+    },
+    {
+      k: "F", name: "玻璃质感环", en: "Glass orb", fam: "材质",
+      pos: "环本身做成一块玻璃：径向渐变盘 + 顶部镜面高光 + 弧带外发光。专为液态玻璃材质配的。",
+      spec: [
+        ["环", "36px，3.4px 弧，圆头 + 4px 外发光"],
+        ["表面", "径向渐变盘 + 0.8px 描边 + 内层 0.7px 细圈"],
+        ["高光", "292° → 340° 一段白色渐隐弧（固定，不随数值）"],
+        ["数字", "11px / 700，1.9px 深色描边保证任何底上都读得清"],
+        ["成本", "M 级，3 个渐变 + 3 层，24 行"]
+      ],
+      when: "你确定默认材质走液态玻璃，并且愿意为它多给 2px 尺寸。是七版里最“贵”的一版。",
+      risk: "哑光纸材质上会发脏（玻璃高光在暖纸底上很怪）；亮色主题需另配一套高光，否则发白。"
+    },
+    {
+      k: "G", name: "数字主导", en: "Type-first", fam: "克制",
+      pos: "干脆不要环：15px 大数字 + 一条 3px 轨道。信息层级最清楚，也最省空间。",
+      spec: [
+        ["结构", "数字 15px / 750 + 3px 轨道条，总占 46×36"],
+        ["层级", "命中率成为头部第一眼，Token 总量退为次要（需同步降到 10px / 600）"],
+        ["边界", "轨道条天然支持 minWidth，1% 也看得见"],
+        ["成本", "S 级，纯 CSS，8 行"]
+      ],
+      when: "你承认“环”这件事本身多余——命中率是个比例，条形比环形更好读。",
+      risk: "会失去产品的一个识别符号；若别处也放条形，头部就和额度条撞形。"
+    }
+  ];
+
+  /* ══════════════ 渲染 ══════════════ */
+  var list = document.getElementById("list");
+  var html = "";
+
+  html += '<section class="cand base" data-key="NOW">' +
+    '<div class="cand-info">' +
+      '<div class="cand-head"><span class="key base">现状</span><h2>当前实现</h2>' +
+        '<span class="en">lib/client.js ringEl()</span><span class="fam">34px / 6px</span></div>' +
+      '<p class="pos">就是你截图里那一版：34px 直径、6px 环宽、粉红渐变、圆头、缺口等于一个环宽。下面七版都拿它当基准。</p>' +
+      '<dl class="spec">' +
+        '<dt>环</dt><dd>34px，环宽 6px（半径 14px，内孔只剩 22px）</dd>' +
+        '<dt>配色</dt><dd>#c65f7f → #ff8fab 线性渐变 + 3px 粉色投影</dd>' +
+        '<dt>数字</dt><dd>11px / 800，tabular-nums，绝对定位居中</dd>' +
+        '<dt>缺口</dt><dd>99% 时缺口约 6.5% 弧长——与 92% 看不出差别</dd>' +
+      '</dl>' +
+      '<p class="note"><b>它的问题不在“不好看”，而在“不承载信息”</b>：环画的是旁边那五个字已经说过的数；而真正缺的缓存 / 新增比例，环一点没说。</p>' +
+      '<p class="note warn">顺手量到一个真 bug：<b>命中率到 100% 时「100%」比内孔宽 5px</b>，数字会压在环上。下面七版都做了三位数降级。</p>' +
+    '</div>' +
+    '<div class="cand-view">' +
+      '<div class="real"><span class="cap">真机 1× 260×40</span>' + fullCard("NOW", 99) + '</div>' +
+      '<div class="zoom"><span class="cap">3× 特写 99%</span>' + zoomBox("NOW", 99) + '</div>' +
+      '<div class="states"><span class="cap">六种状态 1×</span>' + stateRow("NOW") + '</div>' +
+    '</div></section>';
+
+  CANDS.forEach(function(c){
+    html += '<section class="cand" data-key="' + c.k + '">' +
+      '<div class="cand-info">' +
+        '<div class="cand-head"><span class="key">' + c.k + '</span><h2>' + c.name + '</h2>' +
+          '<span class="en">' + c.en + '</span><span class="fam">' + c.fam + '</span>' +
+          '<button class="sel-btn" type="button" data-sel="' + c.k + '">标记选择</button></div>' +
+        '<p class="pos">' + c.pos + '</p>' +
+        '<dl class="spec">' + c.spec.map(function(r){
+          return '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>';
+        }).join("") + '</dl>' +
+        '<p class="note">什么时候选它：<b>' + c.when + '</b></p>' +
+        '<p class="note">风险：<b>' + c.risk + '</b></p>' +
+      '</div>' +
+      '<div class="cand-view">' +
+        '<div class="real"><span class="cap">真机 1× 260×40</span>' + headerCard(c.k, 99) + '</div>' +
+        '<div class="zoom"><span class="cap">3× 特写 99%</span>' + zoomBox(c.k, 99) + '</div>' +
+        '<div class="states"><span class="cap">六种状态 1×</span>' + stateRow(c.k) + '</div>' +
+      '</div></section>';
+  });
+
+  list.innerHTML = html;
+
+  /* ══════════════ 交互 ══════════════ */
+  var root = document.documentElement;
+  function bindSeg(segId, attr){
+    var el = document.getElementById(segId);
+    el.addEventListener("click", function(e){
+      var b = e.target.closest("button");
+      if (!b) return;
+      Array.prototype.forEach.call(el.querySelectorAll("button"), function(x){ x.classList.remove("on"); });
+      b.classList.add("on");
+      root.dataset[attr] = b.dataset[attr];
+    });
+  }
+  bindSeg("thSeg", "th");
+  bindSeg("matSeg", "mat");
+
+  var picked = [];
+  var bar = document.getElementById("pickbar");
+  var chips = document.getElementById("pickchips");
+
+  function syncPick(){
+    Array.prototype.forEach.call(document.querySelectorAll(".cand"), function(el){
+      var k = el.dataset.key;
+      var on = picked.indexOf(k) >= 0;
+      el.classList.toggle("on", on);
+      var btn = el.querySelector(".sel-btn");
+      if (btn) btn.textContent = on ? "已选" : "标记选择";
+    });
+    chips.innerHTML = picked.map(function(k){
+      var c = CANDS.filter(function(x){ return x.k === k; })[0];
+      return '<span class="pickchip">' + k + (c ? " " + c.name : "") + "</span>";
+    }).join("");
+    bar.hidden = picked.length === 0;
+  }
+  function toggle(k){
+    if (k === "NOW") return;
+    var i = picked.indexOf(k);
+    if (i >= 0) picked.splice(i, 1); else picked.push(k);
+    picked.sort();
+    syncPick();
+  }
+  list.addEventListener("click", function(e){
+    var btn = e.target.closest("[data-sel]");
+    var row = e.target.closest(".cand");
+    if (!row || row.dataset.key === "NOW") return;
+    if (btn) e.stopPropagation();
+    toggle(row.dataset.key);
+  });
+
+  document.getElementById("clearBtn").addEventListener("click", function(){
+    picked = []; syncPick();
+  });
+  document.getElementById("copyBtn").addEventListener("click", function(){
+    var self = this;
+    var txt = "缓存命中率指示器选择：" + picked.map(function(k){
+      var c = CANDS.filter(function(x){ return x.k === k; })[0];
+      return k + " " + (c ? c.name : "");
+    }).join(" + ");
+    try {
+      navigator.clipboard.writeText(txt);
+      self.textContent = "已复制";
+      setTimeout(function(){ self.textContent = "复制选择"; }, 1400);
+    } catch (err) {
+      self.textContent = "选择：" + picked.join(" + ");
+    }
+  });
+
+  syncPick();
+})();
+</script>
+</body>
+</html>
