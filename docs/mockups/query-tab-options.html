@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>用量查询 tab · 三方案</title>
+<style>
+  :root{
+    --bg:#0f0f14; --card:#1a1a1f; --line:rgba(255,255,255,.08);
+    --txt:#f5f5f7; --dim:#a0a0b0; --cap:#7a7a8a;
+    --c1:#6b87d9; --c2:#b08427; --c3:#c65f7f; --ok:#10b981; --gw:#8b7bff;
+    --tipbg:#1e1e28;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:34px 24px 64px;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1220px;margin:0 auto}
+  h1{font-size:21px;font-weight:750;letter-spacing:-.4px;margin:0 0 9px}
+  .sub{font-size:12.5px;color:var(--dim);line-height:1.85;margin:0 0 8px;max-width:880px}
+  .sub b{color:var(--txt)}
+
+  h2{font-size:14px;font-weight:700;margin:26px 0 10px;padding-bottom:7px;
+    border-bottom:1px solid var(--line);color:#fff}
+  table.inv{width:100%;border-collapse:collapse;font-size:11.5px;margin:0 0 8px}
+  table.inv th,table.inv td{border:1px solid var(--line);padding:5px 9px;text-align:left;vertical-align:top}
+  table.inv th{background:#181820;color:var(--cap);font-weight:600;font-size:11px}
+  table.inv code{font-family:"Cascadia Code",Consolas,monospace;font-size:10.5px;color:#a89bff}
+  table.inv td.y{color:#4ade80;text-align:center}
+  table.inv td.n{color:#7a7a8a;text-align:center}
+
+  .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+  @media (max-width:1120px){.grid{grid-template-columns:1fr}}
+
+  .opt{background:#14141a;border:1px solid var(--line);border-radius:13px;
+    padding:15px 14px;display:flex;flex-direction:column;gap:12px}
+  .hd{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .tag{font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;
+    background:rgba(139,123,255,.16);color:#a89bff;border:1px solid rgba(139,123,255,.32);
+    font-family:"Cascadia Code",Consolas,monospace}
+  .nm{font-size:13px;font-weight:700}
+  .bd{font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px}
+  .b1{background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.32)}
+  .b2{background:rgba(139,123,255,.15);color:#a89bff;border:1px solid rgba(139,123,255,.32)}
+  .b3{background:rgba(232,180,99,.14);color:#e8b463;border:1px solid rgba(232,180,99,.3)}
+  .why{font-size:11px;color:var(--cap);line-height:1.75}
+  .why .p{color:#4ade80}.why .c{color:#f59e0b}
+  .cost{font-family:"Cascadia Code",Consolas,monospace;font-size:10px;color:#8b7bff;
+    background:rgba(139,123,255,.08);border-radius:5px;padding:3px 7px;display:inline-block}
+
+  /* ══ mock 控件（复用生产观感） ══ */
+  .mock{background:#1a1a1f;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:10px}
+  .mrow{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:7px}
+  .lab{font-size:9.5px;color:var(--cap);flex:none;width:38px}
+  .chips{display:flex;gap:3px;flex-wrap:wrap}
+  .chip{padding:2px 7px;border-radius:999px;border:1px solid var(--line);
+    color:var(--dim);font-size:9.5px;white-space:nowrap}
+  .chip.on{border-color:rgba(109,91,255,.5);background:rgba(109,91,255,.16);color:#a89bff;font-weight:700}
+  .inp{flex:1;min-width:50px;padding:2px 6px;border-radius:5px;
+    border:1px solid var(--line);background:#12121a;color:var(--txt);font-size:9.5px;
+    font-family:"Cascadia Code",Consolas,monospace}
+  .sel{padding:2px 6px;border-radius:5px;border:1px solid var(--line);background:#12121a;
+    color:var(--txt);font-size:9.5px}
+
+  .tbl{width:100%;border-collapse:collapse;font-size:9.5px;margin-top:6px}
+  .tbl th{text-align:left;color:var(--cap);font-weight:600;font-size:9px;
+    border-bottom:1px solid var(--line);padding:3px 4px;white-space:nowrap}
+  .tbl td{padding:3px 4px;border-bottom:1px solid rgba(255,255,255,.04);white-space:nowrap;
+    font-variant-numeric:tabular-nums}
+  .tbl td.num{text-align:right;color:#e8e8ee}
+  .tbl td.mut{color:var(--cap)}
+  .dot{width:5px;height:5px;border-radius:50%;display:inline-block;margin-right:3px}
+
+  .btns{display:flex;gap:4px;margin-top:7px}
+  .btn{flex:1;padding:3px 0;border-radius:6px;font-size:9.5px;text-align:center;
+    border:1px solid rgba(109,91,255,.45);background:rgba(109,91,255,.16);color:#a89bff;font-weight:700}
+  .btn.ghost{border-color:var(--line);background:transparent;color:var(--dim);font-weight:500}
+  .note{font-size:9px;color:var(--cap);margin-top:5px;line-height:1.5}
+
+  .legend{margin-top:30px;border-top:1px solid var(--line);padding-top:18px;
+    font-size:12px;color:var(--dim);line-height:2}
+  .legend b{color:var(--txt)}
+  .legend code{font-family:"Cascadia Code",Consolas,monospace;background:#242433;
+    padding:1px 5px;border-radius:4px;font-size:11px;color:#a89bff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>新增「用量查询」tab：三方案</h1>
+  <p class="sub">先说清楚<b>现在能查什么、不能查什么</b> —— 这决定了方案能做到多"自定义组合"。数据来自本插件的 sqlite（8 张表）与网关账本。</p>
+
+  <h2>现有数据维度盘点（决定了查询的边界）</h2>
+  <table class="inv">
+    <tr>
+      <th>维度</th><th>本机</th><th>网关</th><th>粒度 / 说明</th>
+    </tr>
+    <tr><td><b>日</b></td><td class="y">✓</td><td class="y">✓</td><td>本机按本机时区；网关固定 UTC+8（需换算）</td></tr>
+    <tr><td><b>模型</b></td><td class="y">✓</td><td class="y">✓</td><td><code>daily_usage(model)</code>；网关来自桶键第 4 段</td></tr>
+    <tr><td><b>渠道 provider</b></td><td class="y">✓</td><td class="y">✓</td><td>本机在 <code>events.provider</code>；网关在桶键第 2 段</td></tr>
+    <tr><td><b>项目 project</b></td><td class="y">✓</td><td class="n">✗</td><td>取会话 <code>header.cwd</code> 末段；网关无会话</td></tr>
+    <tr><td><b>会话 session</b></td><td class="y">✓</td><td class="n">✗</td><td>网关不建会话</td></tr>
+    <tr><td><b>工具 tool</b></td><td class="y">✓</td><td class="n">✗</td><td><code>daily_tool(calls, ms, errors)</code></td></tr>
+    <tr><td><b>小时 hour</b></td><td class="y">✓</td><td class="n">✗</td><td><code>daily_hour</code>；网关只有日聚合</td></tr>
+    <tr><td><b>账号 account</b></td><td class="n">✗</td><td class="y">✓</td><td>网关桶键第 3 段；含 id，<b>隐私</b>，默认不展示</td></tr>
+    <tr><td><b>事件类型 / 错误</b></td><td class="y">✓</td><td class="n">✗</td><td><code>events.type</code>、<code>err</code>、<code>daily_reliability</code></td></tr>
+    <tr><td><b>逐笔明细</b></td><td class="y">✓</td><td class="n">✗</td><td><code>events</code> 表可下钻到每笔</td></tr>
+  </table>
+  <p class="sub" style="font-size:11.5px">
+    ⚠️ <b>关键约束</b>：网关只有「日 × 渠道 × 账号 × 模型」四维。
+    所以任何<b>跨本机与网关</b>的组合查询，一旦用上 项目/会话/工具/小时，
+    网关那部分就必须被排除（否则会出现"网关也有项目"的假数据）。这是方案里必须明说的一条。
+  </p>
+
+  <h2>三方案</h2>
+  <div class="grid">
+
+    <!-- ═══ A ═══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">A</span><span class="nm">筛选 + 表格</span>
+        <span class="bd b1">最小可用</span></div>
+      <div class="mock">
+        <div class="mrow"><span class="lab">范围</span><div class="chips">
+          <span class="chip">今天</span><span class="chip on">近 7 天</span>
+          <span class="chip">近 30 天</span><span class="chip">自定义</span></div></div>
+        <div class="mrow"><span class="lab">来源</span><div class="chips">
+          <span class="chip on">本机</span><span class="chip on">网关</span></div></div>
+        <div class="mrow"><span class="lab">模型</span><div class="chips">
+          <span class="chip on">全部</span><span class="chip">v4.1-flash</span>
+          <span class="chip">kimi-k2.8</span></div></div>
+        <table class="tbl">
+          <tr><th>日期</th><th>模型</th><th>请求</th><th>Token</th></tr>
+          <tr><td class="mut">10-29</td><td>v4.1-flash</td><td class="num">64</td><td class="num">12.4M</td></tr>
+          <tr><td class="mut">10-29</td><td>kimi-k2.8</td><td class="num">3</td><td class="num">240K</td></tr>
+          <tr><td class="mut">10-28</td><td>v4.1-flash</td><td class="num">118</td><td class="num">31.1M</td></tr>
+        </table>
+        <div class="btns"><span class="btn">导出 CSV</span><span class="btn ghost">复制</span></div>
+      </div>
+      <div class="why"><span class="p">强项</span>：逻辑最直白 —— <b>横向筛选、纵向出表</b>。用户不用学任何新概念，选完就出数。<br>
+      <span class="c">代价</span>：只能"筛"，不能"换视角"。想按项目看就得回「用量统计」的排行卡。</div>
+      <div class="cost">宿主 ~120 行 / 客户端 ~200 行</div>
+    </div>
+
+    <!-- ═══ B ═══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">B</span><span class="nm">多维行列表（pivot）</span>
+        <span class="bd b1">推荐</span></div>
+      <div class="mock">
+        <div class="mrow"><span class="lab">范围</span><div class="chips">
+          <span class="chip">今天</span><span class="chip on">近 7 天</span>
+          <span class="chip">近 30 天</span><span class="chip">自定义</span></div></div>
+        <div class="mrow"><span class="lab">分组</span><div class="chips">
+          <span class="chip on">模型</span><span class="chip">项目</span>
+          <span class="chip">渠道</span><span class="chip">日</span><span class="chip">会话</span></div></div>
+        <div class="mrow"><span class="lab">次分组</span><div class="chips">
+          <span class="chip on">渠道</span><span class="chip">无</span><span class="chip">日</span></div></div>
+        <div class="mrow"><span class="lab">来源</span><div class="chips">
+          <span class="chip on">本机</span><span class="chip on">网关</span></div></div>
+        <div class="mrow"><span class="lab">指标</span>
+          <select class="sel"><option>Token 总量</option><option>请求数</option><option>缓存命中率</option></select></div>
+        <table class="tbl">
+          <tr><th>模型</th><th>渠道</th><th>Token</th><th>占比</th></tr>
+          <tr><td><span class="dot" style="background:#6b87d9"></span>v4.1-flash</td><td class="mut">buddy</td><td class="num">142.1M</td><td class="num">79%</td></tr>
+          <tr><td></td><td class="mut">trae</td><td class="num">31.2M</td><td class="num">17%</td></tr>
+          <tr><td><span class="dot" style="background:#b08427"></span>kimi-k2.8</td><td class="mut">buddy</td><td class="num">6.4M</td><td class="num">4%</td></tr>
+        </table>
+        <div class="btns"><span class="btn">导出 CSV</span><span class="btn ghost">存为视图</span></div>
+      </div>
+      <div class="why"><span class="p">强项</span>：<b>「按什么看」比「筛什么」更强</b>。主分组 + 次分组两列就覆盖了绝大多数真实问题（"哪个模型在哪个渠道最贵""哪天哪个项目爆了"）。表格天然支持展开/收起。<br>
+      <span class="c">代价</span>：要处理"选了网关不支持的分组" —— 必须显式提示并自动排除网关数据（否则出现假维度）。</div>
+      <div class="cost">宿主 ~180 行 / 客户端 ~320 行</div>
+    </div>
+
+    <!-- ═══ C ═══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">C</span><span class="nm">可视化联动</span>
+        <span class="bd b3">最重</span></div>
+      <div class="mock">
+        <div class="mrow"><span class="lab">范围</span><div class="chips">
+          <span class="chip">今天</span><span class="chip">近 7 天</span>
+          <span class="chip on">近 30 天</span><span class="chip">自定义</span></div></div>
+        <div class="mrow"><span class="lab">图表</span><div class="chips">
+          <span class="chip on">堆叠柱</span><span class="chip">折线</span><span class="chip">饼图</span></div></div>
+        <div style="display:flex;align-items:flex-end;gap:2px;height:52px;padding:4px 0;margin-bottom:6px">
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+            <div style="height:22px;background:#6b87d9;border-radius:2px 2px 0 0"></div>
+            <div style="height:10px;background:#b08427"></div></div>
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+            <div style="height:34px;background:#6b87d9;border-radius:2px 2px 0 0"></div>
+            <div style="height:14px;background:#b08427"></div></div>
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+            <div style="height:28px;background:#6b87d9;border-radius:2px 2px 0 0"></div>
+            <div style="height:8px;background:#b08427"></div></div>
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+            <div style="height:44px;background:#6b87d9;border-radius:2px 2px 0 0"></div>
+            <div style="height:6px;background:#b08427"></div></div>
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+            <div style="height:38px;background:#6b87d9;border-radius:2px 2px 0 0"></div>
+            <div style="height:12px;background:#b08427"></div></div>
+        </div>
+        <div class="note">点击柱子 → 下钻到当天明细；悬停 → 富 tooltip</div>
+        <table class="tbl">
+          <tr><th>日期</th><th>合计</th><th>环比</th></tr>
+          <tr><td class="mut">10-29</td><td class="num">12.6M</td><td class="num" style="color:#4ade80">▲ 8%</td></tr>
+          <tr><td class="mut">10-28</td><td class="num">11.7M</td><td class="num" style="color:#f59e0b">▼ 3%</td></tr>
+        </table>
+        <div class="btns"><span class="btn">导出 CSV</span><span class="btn ghost">存为视图</span></div>
+      </div>
+      <div class="why"><span class="p">强项</span>：图 + 表联动，能看出<b>趋势与构成</b>，而不只是数字。视觉上也最像"查询台"。<br>
+      <span class="c">代价</span>：本仓已有一套图表（热力图/迷你柱/环形），再写一套堆叠柱 + 折线会有<b>三套图形代码</b>；且要处理"筛选后图例过多"（20 个模型堆叠会糊成一团）。</div>
+      <div class="cost">宿主 ~220 行 / 客户端 ~520 行</div>
+    </div>
+
+  </div>
+
+  <h2>方案 B 的关键设计细节（如果选它）</h2>
+  <table class="inv">
+    <tr><th style="width:130px">问题</th><th>处理方式</th></tr>
+    <tr>
+      <td>网关不支持某些分组</td>
+      <td>选了 项目/会话/工具/小时 时，<b>自动把"来源"里的网关置灰</b>，并显示一行：
+        「网关流量无此维度，已排除」。<span style="color:#f59e0b">不能静默丢掉</span> —— 否则用户以为网关那天没用量。</td>
+    </tr>
+    <tr>
+      <td>日界口径</td>
+      <td>网关按 UTC+8、本机按本机时区。表头标注「含网关」，并在 tooltip 里写清两者日界不同；
+        若本机不是 +8，<b>按日期聚合时会有边界日的 1 天偏差</b>，需在脚注说明。</td>
+    </tr>
+    <tr>
+      <td>账号隐私</td>
+      <td>网关桶键含 <code>accountId</code>。默认<b>不提供</b>"按账号分组"，若要提供则脱敏成 <code>账号 1/2/3</code>（与现有 <code>gatewayReport</code> 的做法一致）。</td>
+    </tr>
+    <tr>
+      <td>"存为视图"</td>
+      <td>把当前（范围+分组+筛选+指标）存进 <code>localStorage</code>，最多 8 条，可选名字。
+        不做跨设备同步（本仓没有宿主配置文件）。</td>
+    </tr>
+    <tr>
+      <td>导出</td>
+      <td>复用现有 CSV 导出风格；<b>导出内容 = 当前视图的表格</b>（所见即所得），不是原始 events。</td>
+    </tr>
+    <tr>
+      <td>性能</td>
+      <td>查询走 sqlite 聚合（<code>GROUP BY</code>），不拉 events 全量。上限：30 天 × ~20 模型 × ~6 渠道 ≈ 3600 行，聚合耗时 &lt;10ms。</td>
+    </tr>
+    <tr>
+      <td>已知边界</td>
+      <td>① 只有 <b>90 天</b>保留窗口；② 清空账本后查不到（历史下限被推进）；
+        ③ 网关侧只有日聚合，<b>查不到逐笔</b>；④ 项目为空的历史事件归「—」桶。</td>
+    </tr>
+  </table>
+
+  <div class="legend">
+    <p><b>我推荐 B</b>。理由是"自定义组合查询"的核心价值在<b>换视角</b>（按项目看 / 按渠道看 / 按日看），
+    而不是"筛子更细" —— A 的筛选维度其实已经散落在「用量统计」的排行卡里了，单独做个 tab 收益不大。
+    C 最漂亮，但会引入第三套图形代码，且"20 个模型堆叠"这类问题要额外做 Top-N 合并，成本容易失控。</p>
+    <p style="color:var(--cap)">无论选哪个，建议<b>同时做</b>：① 表头写明是否含网关；② 空结果时给"为什么空"（是没数据、还是被筛选排除了）；③ 时间范围与「用量统计」的 <code>meterRange</code> <b>互不影响</b>（查询台是独立上下文，跟着主界面变会让人困惑）。</p>
+  </div>
+</div>
+</body>
+</html>

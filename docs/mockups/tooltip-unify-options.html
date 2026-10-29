@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>悬浮窗 tooltip 统一 · 三方案</title>
+<style>
+  :root{
+    --bg:#0f0f14; --card:#1a1a1f; --line:rgba(255,255,255,.08);
+    --txt:#f5f5f7; --dim:#a0a0b0; --cap:#7a7a8a;
+    --c1:#6b87d9; --c2:#b08427; --c3:#c65f7f; --ok:#10b981; --gw:#8b7bff;
+    --tipbg:#1e1e28;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:36px 26px 70px;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1200px;margin:0 auto}
+  h1{font-size:21px;font-weight:750;letter-spacing:-.4px;margin:0 0 9px}
+  .sub{font-size:12.5px;color:var(--dim);line-height:1.85;margin:0 0 8px;max-width:860px}
+
+  table.inv{width:100%;border-collapse:collapse;font-size:11.5px;margin:16px 0 30px}
+  table.inv th,table.inv td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+  table.inv th{background:#181820;color:var(--cap);font-weight:600;font-size:11px}
+  table.inv code{font-family:"Cascadia Code",Consolas,monospace;font-size:10.5px;color:#a89bff}
+  table.inv td.bad{color:#e8b463}
+
+  .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+  @media (max-width:1080px){.grid{grid-template-columns:1fr}}
+
+  .opt{background:#14141a;border:1px solid var(--line);border-radius:13px;padding:15px 14px 14px;
+    display:flex;flex-direction:column;gap:12px}
+  .hd{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .tag{font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;
+    background:rgba(139,123,255,.16);color:#a89bff;border:1px solid rgba(139,123,255,.32);
+    font-family:"Cascadia Code",Consolas,monospace}
+  .nm{font-size:13px;font-weight:700}
+  .bd{font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;white-space:nowrap}
+  .b1{background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.32)}
+  .b2{background:rgba(139,123,255,.15);color:#a89bff;border:1px solid rgba(139,123,255,.32)}
+  .b3{background:rgba(232,180,99,.14);color:#e8b463;border:1px solid rgba(232,180,99,.3)}
+
+  .lab{font-size:10.5px;color:var(--cap);margin-bottom:-4px}
+  .why{font-size:11px;color:var(--cap);line-height:1.72}
+  .why .p{color:#4ade80}.why .c{color:#f59e0b}
+  .code{font-family:"Cascadia Code",Consolas,monospace;font-size:10px;color:#8b7bff;
+    background:rgba(139,123,255,.08);border-radius:5px;padding:3px 7px;display:inline-block;line-height:1.6}
+
+  /* ══ 真实 tooltip 样式（逐字照抄 .oq-heat-tip） ══ */
+  .tip{background:var(--tipbg);border:1px solid rgba(255,255,255,.1);border-radius:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.45);padding:8px 10px;font-size:10px;line-height:1.5;
+    color:#fff;min-width:132px;display:inline-block}
+  .tip .tt-head{font-size:9px;color:#9a9aaa;margin-bottom:2px;white-space:nowrap}
+  .tip .tt-main{font-size:14px;font-weight:750;margin-bottom:4px;white-space:nowrap}
+  .tip .tt-row{display:flex;justify-content:space-between;gap:12px;color:#a0a0b0;white-space:nowrap}
+  .tip .tt-row b{color:#fff;font-weight:600}
+  .tip .tt-div{border-top:1px solid rgba(255,255,255,.08);margin:5px 0 3px}
+  .tip .tt-lv{display:flex;gap:3px;margin-top:5px;align-items:center}
+  .tip .tt-lv i{width:7px;height:7px;border-radius:2px;display:inline-block}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex:none}
+
+  /* 原生 title 模拟（系统灰框观感） */
+  .native{background:#2d2d32;border:1px solid #4a4a50;border-radius:3px;padding:3px 6px;
+    font-size:11px;color:#e8e8e8;font-family:"Segoe UI",sans-serif;display:inline-block;
+    white-space:pre;line-height:1.35;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+
+  /* 悬浮窗缩略（只为给 tooltip 一个落点） */
+  .mini{width:260px;border-radius:14px;background:var(--card);border:1px solid var(--line);padding:9px 10px 10px}
+  .mrow{display:flex;align-items:center;gap:6px;font-size:11px;margin-bottom:5px}
+  .mlbl{color:var(--c3);font-weight:600;flex:none}
+  .mtot{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums}
+  .mgw{position:relative;display:inline-flex;align-items:baseline;gap:3px;padding:0 5px;border-radius:999px;
+    border:1px solid rgba(109,91,255,.42);background:rgba(139,123,255,.13);font-variant-numeric:tabular-nums}
+  .mgw i{position:absolute;top:-4px;left:6px;width:0;height:0;border-left:3px solid transparent;
+    border-right:3px solid transparent;border-bottom:4px solid rgba(139,123,255,.42)}
+  .mgw span{font-size:8.5px;color:rgba(139,123,255,.9);font-weight:600}
+  .mgw b{font-size:9.5px;color:#b3aaff;font-weight:750}
+  .mmdl{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:#f5f5f7}
+  .d7{width:7px;height:7px;border-radius:50%;background:var(--c1)}
+
+  .pair{display:flex;flex-direction:column;gap:10px}
+  .pairRow{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
+  .tagrow{font-size:9px;color:var(--cap);width:52px;flex:none;padding-top:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>悬浮窗 tooltip 统一：三方案</h1>
+  <p class="sub">热力图那套自定义 tooltip 已经是全局单例 DOM（挂 <code>body</code> + <code>position:fixed</code> + GSAP 回弹），只是写死在 <code>QuotaWidget</code> 闭包里、只接了热力格。其余各处都是原生 <code>title</code>。</p>
+
+  <table class="inv">
+    <tr><th>位置</th><th>当前实现</th><th>代码位置</th><th>问题</th></tr>
+    <tr><td>热力图热力格</td><td><b>自定义</b>富 tooltip</td><td><code>:5562-5631</code></td><td>—（这是标杆）</td></tr>
+    <tr><td>网关胶囊「网关 31.1M」</td><td class="bad">原生 title</td><td><code>:2185</code></td><td>系统灰框、1s 延迟、纯文本</td></tr>
+    <tr><td>榜首模型名</td><td class="bad">原生 title</td><td><code>:2335</code></td><td>多行纯文本，无对齐</td></tr>
+    <tr><td>隐藏 <code>98%</code> 的占比信息</td><td class="bad">塞在同一个 title 里</td><td><code>:2336</code></td><td>与模型列表混在一段</td></tr>
+    <tr><td>迷你柱（7 日趋势）</td><td class="bad">原生 title</td><td><code>:2354 / 2357</code></td><td>一行超长文本</td></tr>
+    <tr><td>请求胶囊</td><td class="bad">原生 title</td><td><code>:2222</code></td><td>单行长句</td></tr>
+    <tr><td>「仅本机」角标（关闭态）</td><td class="bad">原生 title</td><td><code>:2174</code></td><td>单行长句</td></tr>
+    <tr><td>Live 三态徽标</td><td class="bad">原生 title</td><td><code>:1308</code></td><td>色弱用户唯一通道，值得做富</td></tr>
+    <tr><td>圆环（缓存命中率）</td><td>无（只有 aria-label）</td><td><code>:1186</code></td><td>悬停无反馈</td></tr>
+  </table>
+
+  <div class="grid">
+
+    <!-- ═══ A ═══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">A</span><span class="nm">最小改动：只换 5 处</span>
+        <span class="bd b1">稳妥</span></div>
+
+      <div class="lab">网关胶囊</div>
+      <div class="mini">
+        <div class="mrow"><span class="mlbl">缓存命中率</span><span class="mtot">50.1M Token</span></div>
+        <div class="mrow"><span class="mmdl"><span class="d7"></span>deepseek-v4.1-flash</span>
+          <span class="mgw" style="margin-left:auto"><i></i><span>网关</span><b>31.1M</b></span></div>
+      </div>
+      <div class="tip">
+        <div class="tt-head">网关用量 · UTC+8 日界</div>
+        <div class="tt-main" style="color:#b3aaff">31.1M <span style="font-size:10px;color:#8b7bff">tokens</span></div>
+        <div class="tt-row"><span>占总量</span><b style="color:#b3aaff">62.1%</b></div>
+        <div class="tt-div"></div>
+        <div class="tt-row"><span>本机</span><b>19.0M</b></div>
+        <div class="tt-row"><span>网关</span><b style="color:#b3aaff">31.1M</b></div>
+        <div class="tt-row"><span>请求</span><b>199 次</b></div>
+      </div>
+
+      <div class="lab" style="margin-top:6px">榜首模型</div>
+      <div class="tip">
+        <div class="tt-head">用量最高的模型</div>
+        <div class="tt-main">deepseek-v4.1-flash</div>
+        <div class="tt-row"><span>占总用量</span><b>98%</b></div>
+        <div class="tt-div"></div>
+        <div class="tt-row"><span><span class="dot" style="background:#6b87d9"></span> v4.1-flash</span><b>98%</b></div>
+        <div class="tt-row"><span><span class="dot" style="background:#b08427"></span> kimi-k2.8</span><b>2%</b></div>
+      </div>
+
+      <div class="why"><span class="p">强项</span>：只把已有 <code>title</code> 文本改写成富结构，<b>不动架构</b>。5 处 = 网关胶囊 / 模型名 / 请求胶囊 / 迷你柱 / 仅本机角标。<br>
+      <span class="c">代价</span>：热力图那套代码仍写死在 <code>QuotaWidget</code> 闭包里，新位置要再写一遍定位与动画逻辑（约 60 行重复）。</div>
+      <div class="code">新增 ~120 行 · 改动 5 处 · 无架构调整</div>
+    </div>
+
+    <!-- ═══ B ═══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">B</span><span class="nm">抽出共用 Tip 组件</span>
+        <span class="bd b1">推荐</span></div>
+
+      <div class="lab">同一个 tooltip，三种内容</div>
+      <div class="pair">
+        <div class="tip">
+          <div class="tt-head">网关用量 · UTC+8 日界</div>
+          <div class="tt-main" style="color:#b3aaff">31.1M tokens</div>
+          <div class="tt-row"><span>占总量</span><b>62.1%</b></div>
+          <div class="tt-div"></div>
+          <div class="tt-row"><span>本机</span><b>19.0M</b></div>
+          <div class="tt-row"><span>网关</span><b style="color:#b3aaff">31.1M</b></div>
+        </div>
+        <div class="tip">
+          <div class="tt-head">7 月 24 日（周五）</div>
+          <div class="tt-main">12.4M tokens</div>
+          <div class="tt-row"><span>输入</span><b style="color:#6b87d9">8.1M</b></div>
+          <div class="tt-row"><span>输出</span><b style="color:#b08427">240K</b></div>
+          <div class="tt-row"><span>缓存读</span><b style="color:#c65f7f">4.1M</b></div>
+          <div class="tt-row"><span>请求</span><b>64 次</b></div>
+        </div>
+        <div class="tip">
+          <div class="tt-head">实时状态</div>
+          <div class="tt-main" style="color:#f59e0b">Live</div>
+          <div class="tt-row"><span>通道</span><b>仅网关</b></div>
+          <div class="tt-row"><span>此时</span><b>外部客户端在调用</b></div>
+        </div>
+      </div>
+
+      <div class="why"><span class="p">强项</span>：把 <code>heatTipEnsure/Build/Show/Hide</code> 从 <code>QuotaWidget</code> 闭包提到模块级，做成 <code>oqTip.show(anchorEl, {head, main, rows, footer})</code>。热力图改为调用它（行为不变），其余各处一次性接入。<b>零重复代码，且以后新增 hover 只写内容不写逻辑</b>。<br>
+      <span class="c">代价</span>：要动热力图那段已经调好的代码（有 GSAP 时序、滚动关闭、边界翻转），回归风险集中在这一处 —— 但有现成测试可护。</div>
+      <div class="code">重构 ~80 行 + 接入 7 处 · 净增约 100 行</div>
+    </div>
+
+    <!-- ═══ C ═══ -->
+    <div class="opt">
+      <div class="hd"><span class="tag">C</span><span class="nm">B + 全局 data-tip 属性驱动</span>
+        <span class="bd b2">最省心</span></div>
+
+      <div class="lab">写法变成声明式</div>
+      <div class="code" style="display:block;white-space:pre-wrap;line-height:1.75">jsx("span", {
+  "data-tip-head": "网关用量 · UTC+8 日界",
+  "data-tip-main": "31.1M tokens",
+  "data-tip-rows": "占总量=62.1%|本机=19.0M|网关=31.1M",
+  children: "网关 31.1M"
+})</div>
+      <div class="lab" style="margin-top:8px">由全局委托统一接管</div>
+      <div class="code" style="display:block;white-space:pre-wrap;line-height:1.75">document.addEventListener("mouseover", e => {
+  const el = e.target.closest("[data-tip-head]");
+  if (el) oqTip.show(el, parseTip(el));
+});</div>
+
+      <div class="why"><span class="p">强项</span>：接入任一新位置只需加 2~3 个 data 属性，<b>不用碰 JS 逻辑</b>。全局委托还能顺手解决"滚动/切 tab 时 tooltip 悬空"这类通病。<br>
+      <span class="c">代价</span>：属性是字符串，<b>复杂内容（色点、多列）表达不了</b>，只能退化成纯文本行 —— 反而丢掉了热力图那套的富样式。要支持富内容就得回到 B 的 JS 调用式。<br>
+      <span style="color:#a89bff">另：React 里 <code>data-*</code> 走原生 DOM 事件，与现有 jsx 桩测试的兼容性需要额外验证。</span></div>
+      <div class="code">重构 ~110 行 · 接入 7 处 · 富内容受限</div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:34px;border-top:1px solid var(--line);padding-top:20px;font-size:12px;color:var(--dim);line-height:2">
+    <b style="color:#fff">我的建议：B</b>。理由是热力图那套的价值不在"样式"，而在<b>富内容结构</b>（head / main / rows / div / lv 五层）。
+    A 会把同样的定位+动画逻辑复制 5 遍，以后改一次要改 6 处；C 的声明式很省心，但字符串属性撑不起色点与分栏，最终会退化成"漂亮一点的原生 title"。<br>
+    <span style="color:var(--cap)">另外两处值得一起做：<b>Live 三态徽标</b>（色弱用户的唯一通道，现在只有一句纯文本）与<b>圆环</b>（目前悬停完全无反馈，可给出命中率的算式：缓存读 ÷(新输入+缓存读)）。</span>
+  </div>
+</div>
+</body>
+</html>
