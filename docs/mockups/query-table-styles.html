@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>用量查询 · 表格样式四版</title>
+<style>
+  :root{
+    --bg:#0f0f14; --card:#23232a; --card2:#1e1e26; --line:rgba(255,255,255,.08);
+    --txt:#f5f5f7; --dim:#a0a0b0; --cap:#7a7a8a; --accent:#8b7bff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:34px 26px 70px;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto}
+  h1{font-size:20px;font-weight:750;letter-spacing:-.4px;margin:0 0 9px}
+  .sub{font-size:12.5px;color:var(--dim);line-height:1.85;margin:0 0 6px;max-width:790px}
+  .sub b{color:var(--txt)}
+
+  .opt{margin-bottom:32px}
+  .optHd{display:flex;align-items:baseline;gap:9px;margin-bottom:11px;flex-wrap:wrap}
+  .tag{font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;
+    background:rgba(139,123,255,.16);color:#a89bff;border:1px solid rgba(139,123,255,.32);
+    font-family:"Cascadia Code",Consolas,monospace}
+  .nm{font-size:14px;font-weight:700}
+  .bd{font-size:9px;font-weight:700;padding:1px 7px;border-radius:999px}
+  .b1{background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.32)}
+  .b2{background:rgba(139,123,255,.15);color:#a89bff;border:1px solid rgba(139,123,255,.32)}
+  .b3{background:rgba(232,180,99,.14);color:#e8b463;border:1px solid rgba(232,180,99,.3)}
+  .note{font-size:11.5px;color:var(--cap);line-height:1.8;margin-top:9px;max-width:790px}
+  .note b{color:var(--dim)}
+
+  /* 卡片外壳（与生产 styles.cardCol 一致） */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+  .cTitle{font-size:13px;font-weight:600}
+  .sumRow{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+    padding-bottom:2px}
+  .sumVal{font-size:15px;font-weight:800;font-family:"Cascadia Code",Consolas,monospace;font-variant-numeric:tabular-nums}
+  .sumMeta{font-size:11px;color:var(--dim)}
+
+  /* 查询条件区（简化示意，四版共用） */
+  .ctl{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;display:flex;flex-direction:column;gap:9px;margin-bottom:11px}
+  .ctlRow{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .ctlLab{font-size:11px;color:var(--cap);width:50px;flex:none}
+  .pill{padding:3px 10px;border-radius:999px;font-size:11px;font-weight:500;
+    border:1px solid var(--line);background:var(--card2);color:var(--dim);
+    cursor:pointer;font-family:inherit;white-space:nowrap}
+  .pill.on{border-color:rgba(139,123,255,.5);background:rgba(139,123,255,.16);color:#a89bff;font-weight:700}
+  .runBtn{padding:5px 12px;border-radius:8px;border:1px solid var(--line);
+    background:transparent;color:var(--txt);cursor:pointer;font-size:12px;font-family:inherit;
+    align-self:flex-start}
+  .tabs{display:flex;gap:24px;border-bottom:1px solid var(--line);margin-bottom:16px;font-size:13px}
+  .tab{color:#7a7a8a;padding:8px 1px 10px;cursor:pointer}
+  .tab.on{color:#fff;position:relative}
+  .tab.on::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;
+    border-radius:2px 2px 0 0;background:var(--accent)}
+  .pageHd{font-size:13px;font-weight:700;margin-bottom:12px;
+    display:flex;align-items:center;gap:10px}
+  .pageHd .ln{flex:1;height:1px;background:var(--line)}
+
+  /* 数据：真实形状（10 组，72.3% 独大） */
+  .tbl{width:100%;border-collapse:collapse}
+
+  /* ═══ A · 细线对齐 ═══ */
+  .A{font-size:11.5px}
+  .A th{text-align:left;padding:7px 8px;font-size:10px;font-weight:600;color:var(--cap);
+    border-bottom:1px solid var(--line);white-space:nowrap}
+  .A th.r{text-align:right}
+  .A td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.04)}
+  .A td.r{text-align:right;font-variant-numeric:tabular-nums;font-weight:650}
+  .A td.mut{text-align:right;color:var(--cap);font-variant-numeric:tabular-nums;font-size:11px}
+  .A tbody tr:last-child td{border-bottom:none}
+  .A tbody tr:hover td{background:rgba(255,255,255,.03)}
+
+  /* ═══ B · 内嵌占比条 ═══ */
+  .B{font-size:11.5px}
+  .B th{text-align:left;padding:7px 8px;font-size:10px;font-weight:600;color:var(--cap);
+    border-bottom:1px solid var(--line);white-space:nowrap}
+  .B th.r{text-align:right}
+  .B td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.04)}
+  .B td.r{text-align:right;font-variant-numeric:tabular-nums;font-weight:650;white-space:nowrap}
+  .B tbody tr:last-child td{border-bottom:none}
+  .B tbody tr:hover td{background:rgba(255,255,255,.03)}
+  .pcell{display:flex;align-items:center;justify-content:flex-end;gap:7px;white-space:nowrap}
+  .pnum{font-size:11px;font-variant-numeric:tabular-nums;color:var(--dim);min-width:42px;text-align:right}
+  .ptrack{width:46px;flex:none;height:2px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden}
+  .pfill{height:100%;border-radius:2px;background:linear-gradient(90deg,#6d5bff,#a89bff)}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:1px}
+
+  /* ═══ C · 榜单式 ═══ */
+  .C{display:flex;flex-direction:column;gap:2px}
+  .Crow{display:grid;grid-template-columns:22px 1fr 76px 50px;align-items:center;
+    gap:9px;padding:7px 8px;border-radius:7px;font-size:11.5px}
+  .Crow:hover{background:rgba(255,255,255,.04)}
+  .Crow.head{padding:0 8px 6px;font-size:10px;color:var(--cap);font-weight:600;
+    border-bottom:1px solid var(--line);border-radius:0}
+  .Crow.head:hover{background:transparent}
+  .rank{font-size:10px;color:var(--cap);font-variant-numeric:tabular-nums;text-align:right}
+  .cname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cval{font-variant-numeric:tabular-nums;font-weight:650;text-align:right;white-space:nowrap}
+  .cpct{font-variant-numeric:tabular-nums;color:var(--cap);font-size:11px;text-align:right}
+  .Crow.top1 .rank{color:#e8b463;font-weight:700}
+  .Crow.top2 .rank{color:#c0c0c8;font-weight:700}
+  .Crow.top3 .rank{color:#b08427;font-weight:700}
+
+  /* ═══ D · 占比条在最左（强调分布） ═══ */
+  .D{font-size:11.5px}
+  .D th{text-align:left;padding:7px 8px;font-size:10px;font-weight:600;color:var(--cap);
+    border-bottom:1px solid var(--line);white-space:nowrap}
+  .D th.r{text-align:right}
+  .D td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+  .D td.r{text-align:right;font-variant-numeric:tabular-nums;font-weight:650;white-space:nowrap}
+  .D td.mut{text-align:right;color:var(--cap);font-variant-numeric:tabular-nums;font-size:11px}
+  .D tbody tr:last-child td{border-bottom:none}
+  .D tbody tr:hover td{background:rgba(255,255,255,.03)}
+  .Dcol{width:118px}
+  .dbar{height:14px;border-radius:3px;background:rgba(139,123,255,.14);overflow:hidden;position:relative}
+  .dfill{height:100%;border-radius:3px;background:linear-gradient(90deg,rgba(109,91,255,.75),rgba(168,155,255,.95))}
+
+  .final{border-top:1px solid var(--line);padding-top:16px;margin-top:8px;
+    font-size:12px;color:var(--dim);line-height:2}
+  .final b{color:var(--txt)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>用量查询 · 表格样式四版</h1>
+  <p class="sub">四版都按<b>真实数据形状</b>渲染（10 组、第一名 72.3% 高度集中），因为"一枝独秀 + 长尾"才是真实分布，均分假数据看不出问题。</p>
+  <p class="sub" style="color:var(--cap);font-size:11.5px">已按你的要求去掉「导出 CSV」与「存为视图」，面板只剩<b>查询条件 + 结果</b>两块 —— 所以你会看到布局比现在紧凑。</p>
+
+  <!-- ══════ A ══════ -->
+  <div class="opt">
+    <div class="optHd"><span class="tag">A</span><span class="nm">细线对齐</span><span class="bd b2">最克制</span></div>
+    <div class="tabs"><span class="tab">用量统计</span><span class="tab on">用量查询</span><span class="tab">外观</span><span class="tab">数据源</span></div>
+    <div class="ctl">
+      <div class="ctlRow"><span class="ctlLab">区间</span>
+        <button class="pill">今日</button><button class="pill on">7天</button><button class="pill">30天</button><button class="pill">90天</button><button class="pill">全部</button></div>
+      <div class="ctlRow"><span class="ctlLab">分组</span><span style="font-size:11px;color:#7a7a8a">按</span>
+        <button class="pill">日</button><button class="pill on">模型</button><button class="pill">渠道</button><button class="pill">账号</button></div>
+      <button class="runBtn">重新查询</button>
+    </div>
+    <div class="card">
+      <div class="cTitle">结果</div>
+      <div class="sumRow"><span class="sumVal">3.30B</span><span class="sumMeta">10 组 · 2026-10-23 ~ 2026-10-29</span></div>
+      <table class="tbl A">
+        <thead><tr><th>模型</th><th class="r">Token 总量</th><th class="r">占比</th></tr></thead>
+        <tbody>
+          <tr><td>deepseek-v4.1-flash</td><td class="r">2.39B</td><td class="mut">72.3%</td></tr>
+          <tr><td>dfmodel</td><td class="r">234.1M</td><td class="mut">7.1%</td></tr>
+          <tr><td>deepseek-v4.1-flash-sg</td><td class="r">229.4M</td><td class="mut">6.9%</td></tr>
+          <tr><td>glm-5.3-flashx</td><td class="r">181.7M</td><td class="mut">5.5%</td></tr>
+          <tr><td>kimi-k3.1-pro</td><td class="r">93.3M</td><td class="mut">2.8%</td></tr>
+          <tr><td>sn-kimi-k3</td><td class="r">61.4M</td><td class="mut">1.9%</td></tr>
+          <tr><td>kimi-k2.8-preview</td><td class="r">38.8M</td><td class="mut">1.2%</td></tr>
+          <tr><td>kimi-k3.1</td><td class="r">38.6M</td><td class="mut">1.2%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note"><b>做法</b>：只靠等宽数字右对齐成列，不加任何装饰。<br>
+    <b>强项</b>：信息密度最高、永不显旧。<br>
+    <b>代价</b>：长尾区（1.2% / 1.1%）数字无差别，看不出断崖在哪。</div>
+  </div>
+
+  <!-- ══════ B ══════ -->
+  <div class="opt">
+    <div class="optHd"><span class="tag">B</span><span class="nm">内嵌细占比条</span><span class="bd b1">推荐</span></div>
+    <div class="tabs"><span class="tab">用量统计</span><span class="tab on">用量查询</span><span class="tab">外观</span><span class="tab">数据源</span></div>
+    <div class="ctl">
+      <div class="ctlRow"><span class="ctlLab">区间</span>
+        <button class="pill">今日</button><button class="pill on">7天</button><button class="pill">30天</button><button class="pill">90天</button><button class="pill">全部</button></div>
+      <div class="ctlRow"><span class="ctlLab">分组</span><span style="font-size:11px;color:#7a7a8a">按</span>
+        <button class="pill">日</button><button class="pill on">模型</button><button class="pill">渠道</button><button class="pill">账号</button></div>
+      <button class="runBtn">重新查询</button>
+    </div>
+    <div class="card">
+      <div class="cTitle">结果</div>
+      <div class="sumRow"><span class="sumVal">3.30B</span><span class="sumMeta">10 组 · 2026-10-23 ~ 2026-10-29</span></div>
+      <table class="tbl B">
+        <thead><tr><th>模型</th><th class="r">Token 总量</th><th class="r">占比</th></tr></thead>
+        <tbody>
+          <tr><td><span class="dot" style="background:#6b87d9"></span>deepseek-v4.1-flash</td><td class="r">2.39B</td>
+            <td><div class="pcell"><span class="pnum">72.3%</span><div class="ptrack"><div class="pfill" style="width:72.3%"></div></div></div></td></tr>
+          <tr><td><span class="dot" style="background:#b08427"></span>dfmodel</td><td class="r">234.1M</td>
+            <td><div class="pcell"><span class="pnum">7.1%</span><div class="ptrack"><div class="pfill" style="width:7.1%"></div></div></div></td></tr>
+          <tr><td><span class="dot" style="background:#c65f7f"></span>deepseek-v4.1-flash-sg</td><td class="r">229.4M</td>
+            <td><div class="pcell"><span class="pnum">6.9%</span><div class="ptrack"><div class="pfill" style="width:6.9%"></div></div></div></td></tr>
+          <tr><td><span class="dot" style="background:#8d7ce4"></span>glm-5.3-flashx</td><td class="r">181.7M</td>
+            <td><div class="pcell"><span class="pnum">5.5%</span><div class="ptrack"><div class="pfill" style="width:5.5%"></div></div></div></td></tr>
+          <tr><td><span class="dot" style="background:#9a9aaa"></span>kimi-k3.1-pro</td><td class="r">93.3M</td>
+            <td><div class="pcell"><span class="pnum">2.8%</span><div class="ptrack"><div class="pfill" style="width:2.8%"></div></div></div></td></tr>
+          <tr><td><span class="dot" style="background:#9a9aaa"></span>sn-kimi-k3</td><td class="r">61.4M</td>
+            <td><div class="pcell"><span class="pnum">1.9%</span><div class="ptrack"><div class="pfill" style="width:1.9%"></div></div></div></td></tr>
+          <tr><td><span class="dot" style="background:#9a9aaa"></span>kimi-k2.8-preview</td><td class="r">38.8M</td>
+            <td><div class="pcell"><span class="pnum">1.2%</span><div class="ptrack"><div class="pfill" style="width:1.2%"></div></div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note"><b>做法</b>：占比列 = 数字 + 右侧一根 <b>46px × 2px</b> 的细条（线性比例，不歪曲数据）。<br>
+    <b>强项</b>：数量级差一眼可见（72.3% 几乎铺满、1.2% 只剩一条线），而<b>数字仍是主角</b>；细条只占 46px，不抢焦点。<br>
+    色点沿用「用量统计」模型榜的识别色（前 4 名专属色、其余灰），两页能对上号。<br>
+    <b>代价</b>：每行多 ~4px 高；需要 ~100px 的占比列宽。</div>
+  </div>
+
+  <!-- ══════ C ══════ -->
+  <div class="opt">
+    <div class="optHd"><span class="tag">C</span><span class="nm">榜单式（无表格线）</span><span class="bd b2">最轻盈</span></div>
+    <div class="tabs"><span class="tab">用量统计</span><span class="tab on">用量查询</span><span class="tab">外观</span><span class="tab">数据源</span></div>
+    <div class="ctl">
+      <div class="ctlRow"><span class="ctlLab">区间</span>
+        <button class="pill">今日</button><button class="pill on">7天</button><button class="pill">30天</button><button class="pill">90天</button><button class="pill">全部</button></div>
+      <div class="ctlRow"><span class="ctlLab">分组</span><span style="font-size:11px;color:#7a7a8a">按</span>
+        <button class="pill">日</button><button class="pill on">模型</button><button class="pill">渠道</button><button class="pill">账号</button></div>
+      <button class="runBtn">重新查询</button>
+    </div>
+    <div class="card">
+      <div class="cTitle">结果</div>
+      <div class="sumRow"><span class="sumVal">3.30B</span><span class="sumMeta">10 组 · 2026-10-23 ~ 2026-10-29</span></div>
+      <div class="C">
+        <div class="Crow head"><span></span><span>模型</span><span style="text-align:right">Token 总量</span><span style="text-align:right">占比</span></div>
+        <div class="Crow top1"><span class="rank">1</span><span class="cname">deepseek-v4.1-flash</span><span class="cval">2.39B</span><span class="cpct">72.3%</span></div>
+        <div class="Crow top2"><span class="rank">2</span><span class="cname">dfmodel</span><span class="cval">234.1M</span><span class="cpct">7.1%</span></div>
+        <div class="Crow top3"><span class="rank">3</span><span class="cname">deepseek-v4.1-flash-sg</span><span class="cval">229.4M</span><span class="cpct">6.9%</span></div>
+        <div class="Crow"><span class="rank">4</span><span class="cname">glm-5.3-flashx</span><span class="cval">181.7M</span><span class="cpct">5.5%</span></div>
+        <div class="Crow"><span class="rank">5</span><span class="cname">kimi-k3.1-pro</span><span class="cval">93.3M</span><span class="cpct">2.8%</span></div>
+        <div class="Crow"><span class="rank">6</span><span class="cname">sn-kimi-k3</span><span class="cval">61.4M</span><span class="cpct">1.9%</span></div>
+        <div class="Crow"><span class="rank">7</span><span class="cname">kimi-k2.8-preview</span><span class="cval">38.8M</span><span class="cpct">1.2%</span></div>
+        <div class="Crow"><span class="rank">8</span><span class="cname">kimi-k3.1</span><span class="cval">38.6M</span><span class="cpct">1.2%</span></div>
+      </div>
+    </div>
+    <div class="note"><b>做法</b>：去掉所有竖线、只留悬停高亮；加序号，前三名金/银/铜。<br>
+    <b>强项</b>：视觉最轻、最像"产品"而非"后台"。<br>
+    <b>代价</b>：序号对「按日 / 按小时」意义不大（日期本身有序）；纵向对齐弱于表格。</div>
+  </div>
+
+  <!-- ══════ D ══════ -->
+  <div class="opt">
+    <div class="optHd"><span class="tag">D</span><span class="nm">横向占比条（在名称与数值之间）</span><span class="bd b3">最直观</span></div>
+    <div class="tabs"><span class="tab">用量统计</span><span class="tab on">用量查询</span><span class="tab">外观</span><span class="tab">数据源</span></div>
+    <div class="ctl">
+      <div class="ctlRow"><span class="ctlLab">区间</span>
+        <button class="pill">今日</button><button class="pill on">7天</button><button class="pill">30天</button><button class="pill">90天</button><button class="pill">全部</button></div>
+      <div class="ctlRow"><span class="ctlLab">分组</span><span style="font-size:11px;color:#7a7a8a">按</span>
+        <button class="pill">日</button><button class="pill on">模型</button><button class="pill">渠道</button><button class="pill">账号</button></div>
+      <button class="runBtn">重新查询</button>
+    </div>
+    <div class="card">
+      <div class="cTitle">结果</div>
+      <div class="sumRow"><span class="sumVal">3.30B</span><span class="sumMeta">10 组 · 2026-10-23 ~ 2026-10-29</span></div>
+      <table class="tbl D">
+        <thead><tr><th>模型</th><th class="Dcol" style="text-align:left;font-size:10px">分布</th><th class="r">Token 总量</th><th class="r">占比</th></tr></thead>
+        <tbody>
+          <tr><td>deepseek-v4.1-flash</td>
+            <td class="Dcol"><div class="dbar"><div class="dfill" style="width:72.3%"></div></div></td>
+            <td class="r">2.39B</td><td class="mut">72.3%</td></tr>
+          <tr><td>dfmodel</td>
+            <td class="Dcol"><div class="dbar"><div class="dfill" style="width:7.1%"></div></div></td>
+            <td class="r">234.1M</td><td class="mut">7.1%</td></tr>
+          <tr><td>deepseek-v4.1-flash-sg</td>
+            <td class="Dcol"><div class="dbar"><div class="dfill" style="width:6.9%"></div></div></td>
+            <td class="r">229.4M</td><td class="mut">6.9%</td></tr>
+          <tr><td>glm-5.3-flashx</td>
+            <td class="Dcol"><div class="dbar"><div class="dfill" style="width:5.5%"></div></div></td>
+            <td class="r">181.7M</td><td class="mut">5.5%</td></tr>
+          <tr><td>kimi-k3.1-pro</td>
+            <td class="Dcol"><div class="dbar"><div class="dfill" style="width:2.8%"></div></div></td>
+            <td class="r">93.3M</td><td class="mut">2.8%</td></tr>
+          <tr><td>sn-kimi-k3</td>
+            <td class="Dcol"><div class="dbar"><div class="dfill" style="width:1.9%"></div></div></td>
+            <td class="r">61.4M</td><td class="mut">1.9%</td></tr>
+          <tr><td>kimi-k2.8-preview</td>
+            <td class="Dcol"><div class="dbar"><div class="dfill" style="width:1.2%"></div></div></td>
+            <td class="r">38.8M</td><td class="mut">1.2%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note"><b>做法</b>：名称与数值之间插一列 118px 的横条（14px 高，带淡底槽）。<br>
+    <b>强项</b>：分布的"断崖"最直观，横条本身就是柱状图；适合快速扫。<br>
+    <b>代价</b>：占掉 118px 宽度，名称列被压缩（长模型名会更早出现省略号）；视觉上比 B 重。</div>
+  </div>
+
+  <div class="final">
+    <p><b>我的建议：B</b>。这个表格最常被问的问题是"谁占大头、断崖在哪"，
+    B 的细条把<b>数量级</b>画了出来，而数字仍是主角；46px 的条不会喧宾夺主。<br>
+    A 太素、C 丢了纵向对齐（且序号对按日/按小时无意义）、D 占宽 118px 会压缩模型名。</p>
+    <p style="color:var(--cap)">一个必须说明的取舍：<b>占比条用线性比例</b>，所以 1.2% 只剩 0.6px 几乎看不见。
+    我没有用平方根或对数"放大"长尾 —— 那会让 72.3% 与 1.2% 的 66 倍差距看起来只有 5 倍，
+    <b>在表格里歪曲比例就是误导</b>。长尾的数字本身仍然可读（1.2% / 1.1%），只是条形不承诺可见。</p>
+  </div>
+</div>
+</body>
+</html>
