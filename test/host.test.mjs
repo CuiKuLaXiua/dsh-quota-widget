@@ -2087,3 +2087,126 @@ test("网关活动：clearGatewayState 清掉活动时刻与计数基线（关�
   assert.equal(T.computeUsage("1d").sources.gateway.lastActiveAt, 0);
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ===== 「用量查询」多维 pivot（宿主侧）=====
+// 用户需求：方案 B（多维 pivot）+ 存为视图 + 账号维度
+// 最容易错的三件事，全部有用例锁死：
+//   ① 从单维聚合重建交叉 → 会得到半截行且 grand 翻倍（第一版实现真踩了）
+//   ② 本机独有维度没排除网关 → 出现"网关也有项目"的假数据
+//   ③ 账号没脱敏 → 原始 accountId 泄漏进响应
+
+test("queryUsage：主+次分组是**真交叉**，grand 不重复计", () => {
+  T.resetUsage(); T.liveSeqs.clear(); T.seenSeq.clear();
+  const day = T.dayKeyOf(Date.now());
+  // 造两份本机事件：同一个模型、两个不同渠道
+  const mk = (seq, model, provider, input, output) => ({
+    type: "assistant/message", time: Date.now(), seq: seq, day: day,
+    data: { usage: { inputTokens: input, outputTokens: output, cacheReadTokens: 0 },
+      turn: 0, step: 0, message: { source: { model: model, provider: provider } } },
+  });
+  T.ingestEvent("s1", mk(1, "m-a", "prov-a", 100, 10));
+  T.ingestEvent("s1", mk(2, "m-a", "prov-b", 200, 20));
+  T.ingestEvent("s1", mk(3, "m-b", "prov-a", 300, 30));
+
+  // 单维：按模型（内存回溯路径也能正确汇总）
+  const byModel = T.queryUsage({ range: "7d", groupBy: "model" });
+  assert.equal(byModel.ok, true);
+  assert.equal(byModel.grand, 660, "m-a(330) + m-b(330) = 660");
+  // 内存回溯下必须**标注**交叉不可用，而不是静默给半截结果
+  const cross = T.queryUsage({ range: "7d", groupBy: "model", subGroup: "provider" });
+  assert.equal(cross.grand, byModel.grand,
+    "换分组方式不能改变总量 —— 若不一致说明同一批数据被主/次分组各算了一次");
+  assert.equal(cross.localCrossMissing, true,
+    "无 sqlite 时内存只有单维聚合，交叉结果不完整，必须如实标注");
+});
+
+test("queryUsage：真交叉（需要 sqlite）—— grand 一致且无 __all__ 占位", () => {
+  // 交叉分组必须走 events 表的 GROUP BY；内存态无法重建。
+  // 这里用一个临时库造数据，验证"换切法不改总量"这条不变量。
+  const db = new DatabaseSync(":memory:");
+  T.setDbForTesting(db);
+  // 复用真实的建表语句：直接调用一次 hydrate 以触发 schema 初始化不可行，
+  // 这里手写最小表结构（与 lib/index.js 的 CREATE TABLE 一致）
+  db.exec("CREATE TABLE IF NOT EXISTS events(seq INTEGER, time INTEGER NOT NULL, day TEXT NOT NULL, session_id TEXT NOT NULL, model TEXT NOT NULL, input INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, cache_write INTEGER NOT NULL DEFAULT 0, type TEXT NOT NULL, raw TEXT, project TEXT, tool TEXT, ms INTEGER NOT NULL DEFAULT 0, provider TEXT, err INTEGER NOT NULL DEFAULT 0, num INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(seq, session_id))");
+  const day = T.dayKeyOf(Date.now());
+  const ins = db.prepare("INSERT INTO events(seq,time,day,session_id,model,input,output,cache_read,type,provider,project,tool,ms,err,num) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+  ins.run(1, Date.now(), day, "s1", "m-a", 100, 10, 0, "assistant/message", "prov-a", "p1", null, 0, 0, 0);
+  ins.run(2, Date.now(), day, "s1", "m-a", 200, 20, 0, "assistant/message", "prov-b", "p1", null, 0, 0, 0);
+  ins.run(3, Date.now(), day, "s1", "m-b", 300, 30, 0, "assistant/message", "prov-a", "p1", null, 0, 0, 0);
+
+  const byModel = T.queryUsage({ range: "7d", groupBy: "model" });
+  const cross = T.queryUsage({ range: "7d", groupBy: "model", subGroup: "provider" });
+  assert.equal(byModel.grand, 660, "m-a(330) + m-b(330) = 660");
+  assert.equal(cross.grand, byModel.grand, "换分组方式不能改变总量");
+  assert.equal(cross.rowCount, 3, "应是 3 个真实交叉组，实际 " + cross.rowCount);
+  const keys = cross.rows.map((r) => r.k1 + "|" + r.k2).sort();
+  assert.deepEqual(keys, ["m-a|prov-a", "m-a|prov-b", "m-b|prov-a"]);
+  assert.ok(!keys.some((k) => k.indexOf("__all__") >= 0), "不得出现 __all__ 占位行");
+  db.close();
+  T.setDbForTesting(null);
+});
+
+test("queryUsage：本机独有维度必须排除网关，并如实上报原因", () => {
+  T.resetUsage(); T.liveSeqs.clear(); T.seenSeq.clear();
+  const day = T.dayKeyOf(Date.now());
+  T.ingestEvent("s1", { type: "assistant/message", time: Date.now(), seq: 1, day: day,
+    data: { usage: { inputTokens: 10, outputTokens: 1, cacheReadTokens: 0 }, turn: 0, step: 0,
+      message: { source: { model: "m", provider: "p" } } } });
+
+  for (const dim of ["project", "session", "tool", "hour"]) {
+    const r = T.queryUsage({ range: "7d", groupBy: dim, source: "both" });
+    assert.equal(r.gatewayIncluded, false, dim + " 是本机独有维度，网关必须被排除");
+    assert.equal(r.gatewayExcludedReason, "dim-local-only",
+      dim + " 的排除原因必须是 dim-local-only（不能静默丢掉）");
+    assert.deepEqual(r.gatewayExcludedDims, [dim]);
+  }
+  // 两端都有的维度不应排除网关（网关可用时）
+  const both = T.queryUsage({ range: "7d", groupBy: "model", source: "both" });
+  assert.notEqual(both.gatewayExcludedReason, "dim-local-only");
+});
+
+test("queryUsage：只选本机时网关被排除，原因为 source-local", () => {
+  const r = T.queryUsage({ range: "7d", groupBy: "model", source: "local" });
+  assert.equal(r.gatewayIncluded, false);
+  assert.equal(r.gatewayExcludedReason, "source-local");
+});
+
+test("queryUsage：非法维度必须报错而不是静默返回空", () => {
+  assert.equal(T.queryUsage({ groupBy: "not-a-dim" }).ok, false);
+  assert.equal(T.queryUsage({ groupBy: "model", subGroup: "bad" }).ok, false);
+  // 错误码要能区分主/次分组
+  assert.equal(T.queryUsage({ groupBy: "bad" }).error, "bad-group");
+  assert.equal(T.queryUsage({ groupBy: "model", subGroup: "bad" }).error, "bad-subgroup");
+});
+
+test("gwAccountLabel：账号脱敏且编号稳定（同一 id 永远同一编号）", () => {
+  // 用户要求"账号维度要"，但原始 id 属隐私，必须脱敏且稳定
+  const a1 = T.gwAccountLabel("buddy-f108fa23");
+  const a2 = T.gwAccountLabel("buddy-f108fa23");
+  const b = T.gwAccountLabel("trae-ff8377de");
+  assert.equal(a1, a2, "同一账号 id 必须永远映射到同一标签（否则筛选一变就换人）");
+  assert.notEqual(a1, b, "不同账号不能用同一个标签");
+  assert.ok(/^账号 \d+$/.test(a1), "标签格式应为「账号 N」，实际：" + a1);
+  assert.ok(a1.indexOf("buddy") < 0 && a1.indexOf("f108fa23") < 0, "不得泄漏原始 id 片段");
+});
+
+test("queryUsage：账号维度只在网关侧出现，且标签已脱敏", () => {
+  const r = T.queryUsage({ range: "30d", groupBy: "account", source: "gateway" });
+  assert.equal(r.accountLabelsMasked, true, "响应必须声明账号已脱敏");
+  // 若有数据，标签必须是脱敏格式
+  for (const row of (r.rows || [])) {
+    assert.ok(/^账号 /.test(row.k1), "账号行必须是脱敏标签，实际：" + row.k1);
+    assert.ok(row.k1.indexOf("-") < 0, "标签里不得出现原始 id 的连字符片段");
+  }
+});
+
+test("queryWindowKeys：区间换算成本地日集合（含 custom）", () => {
+  const d7 = T.queryWindowKeys("7d");
+  assert.equal(d7.keys.size, 7, "7d 应是 7 个日键");
+  const all = T.queryWindowKeys("all");
+  assert.equal(all.keys, null, "all = 全窗口，用 null 表示");
+  const cw = T.queryWindowKeys("custom", { from: "2026-10-20", to: "2026-10-29" });
+  assert.equal(cw.from, "2026-10-20");
+  assert.equal(cw.to, "2026-10-29");
+  assert.equal(cw.keys.size, 10, "10-20~10-29 是闭区间，共 10 天");
+});

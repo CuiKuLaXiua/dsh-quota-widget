@@ -75,6 +75,35 @@ function gatewayPayloadFor(kind) {
   return base;
 }
 
+/**
+ * 「用量查询」端点的"正常"响应（字段照 host 的 /api/token-meter/query 裁剪）。
+ * 单测覆盖各场景时用 queryPayload 覆盖。
+ */
+function queryOkPayload() {
+  return {
+    ok: true,
+    query: { range: "7d", from: dayKey(6), to: dayKey(0), groupBy: "model", subGroup: "", source: "both", metric: "total" },
+    rows: [
+      { k1: "deepseek-v4.1-flash", k2: "", value: 4200000, requests: 120, total: 4200000, share: 70 },
+      { k1: "kimi-k2.8", k2: "", value: 1800000, requests: 30, total: 1800000, share: 30 },
+    ],
+    rowCount: 2, truncated: false, grand: 6000000,
+    dimensions: [
+      { key: "day", label: "日", scope: "both" },
+      { key: "model", label: "模型", scope: "both" },
+      { key: "provider", label: "渠道", scope: "both" },
+      { key: "account", label: "账号", scope: "gw" },
+      { key: "project", label: "项目", scope: "local" },
+      { key: "session", label: "会话", scope: "local" },
+      { key: "tool", label: "工具", scope: "local" },
+      { key: "hour", label: "小时", scope: "local" },
+    ],
+    gatewayIncluded: true, gatewayExcludedReason: null, gatewayExcludedDims: [],
+    gatewayAvailable: true, gatewayTz: "UTC+8", accountLabelsMasked: true,
+    localQueryError: null, gatewayCrossMissing: false,
+  };
+}
+
 /** 真实形状的 payload（字段照 host 的 /api/token-meter 响应裁剪） */
 function payload(range) {
   const daily = [dayKey(2), dayKey(1), dayKey(0)].map((date, i) => ({
@@ -169,7 +198,7 @@ function collectText(node, out = []) {
   return out;
 }
 
-async function setup({ localStorageSeed = {}, fetchPayload, gatewayPayload } = {}) {
+async function setup({ localStorageSeed = {}, fetchPayload, gatewayPayload, queryPayload } = {}) {
   const { react, reset } = makeReactStub();
   const jsxStub = makeJsxStub();
   const requireStub = (name) => {
@@ -229,7 +258,23 @@ async function setup({ localStorageSeed = {}, fetchPayload, gatewayPayload } = {
     }
     // 「网关」tab 的诊断端点。必须排在 /api/token-meter 兜底之前（URL 前缀相同）。
     if (u.indexOf("/api/token-meter/gateway") >= 0) {
-      return { status: 200, ok: true, json: async () => (gatewayPayload ? gatewayPayload(u) : gatewayOkPayload()) };
+      const gp = gatewayPayload ? gatewayPayload(u) : gatewayOkPayload();
+      return {
+        status: 200, ok: true,
+        text: async () => JSON.stringify(gp),
+        json: async () => gp,
+      };
+    }
+    // 「用量查询」端点。同样要排在 /api/token-meter 兜底之前。
+    // ⚠️ 必须同时提供 text()：客户端为了把"解析失败"报成可排查的信息
+    // （而不是一句 bad json），改成先取 text 再 JSON.parse。
+    if (u.indexOf("/api/token-meter/query") >= 0) {
+      const qp = queryPayload ? queryPayload(u) : queryOkPayload();
+      return {
+        status: 200, ok: true,
+        text: async () => JSON.stringify(qp),
+        json: async () => qp,
+      };
     }
     const m = u.match(/range=([^&]+)/);
     const range = m ? decodeURIComponent(m[1]) : "1d";
@@ -1362,3 +1407,165 @@ test("Live 徽标：改用富 tooltip，且仍保留三态可达性信息", () =
   }
 });
 
+
+// ===== 「用量查询」tab（多维 pivot）=====
+// 用户需求：① 方案 B（多维 pivot）② 存为视图 ③ 账号维度要
+// 这一页是**查询台**，与「用量统计」的分工是"自选交叉" vs "固定看板"。
+
+/** 切到「用量查询」tab 并返回渲染结果 */
+function gotoQuery(opts) {
+  return async () => {
+    const ctx = await setup(opts || {});
+    let tree = await renderTwice(ctx.panel, ctx.reset);
+    const btn = findClickable(tree, "oq-tab").filter((n) => collectText(n.props.children).join("") === "用量查询");
+    assert.ok(btn.length >= 1, "应存在「用量查询」标签按钮");
+    btn[0].props.onClick();
+    // 切 tab 后 effect 才触发 fetchQuery（async）：渲染 → 等落地 → 再渲染
+    ctx.reset(); ctx.panel();
+    await new Promise((r) => setTimeout(r, 20));
+    ctx.reset();
+    tree = ctx.panel();
+    return Object.assign({}, ctx, { tree, text: visiblePanelText(tree) });
+  };
+}
+
+test("设置页：「用量查询」是独立 tab，紧邻「用量统计」", async () => {
+  const { panel, reset } = await setup({});
+  const tree = await renderTwice(panel, reset);
+  const labels = findClickable(tree, "oq-tab").map((n) => collectText(n.props.children).join(""));
+  const iUsage = labels.indexOf("用量统计");
+  const iQuery = labels.indexOf("用量查询");
+  assert.ok(iQuery >= 0, "应有「用量查询」tab，实际：" + labels.join(","));
+  assert.equal(iQuery, iUsage + 1, "「用量查询」应紧跟「用量统计」（同一件事的两个视角）");
+});
+
+test("用量查询：只剩「查询条件 / 结果」两块（导出 CSV 与存为视图已按用户要求移除）", async () => {
+  const g = await gotoQuery()({});
+  for (const kw of ["查询条件", "结果"]) {
+    assert.ok(g.text.includes(kw), "应有「" + kw + "」卡片");
+  }
+  // 用户明确要求移除这两块 —— 锁住，避免以后被"顺手加回来"
+  assert.ok(!g.text.includes("存为视图"), "「存为视图」已移除，不应再出现在面板里");
+  assert.ok(!g.text.includes("导出 CSV"), "「导出 CSV」已移除，不应再出现在面板里");
+  // pivot 表：应有分组维度表头与结果行
+  assert.ok(g.text.includes("模型"), "表头应有主分组维度名");
+  assert.ok(g.text.includes("deepseek-v4.1-flash"), "应显示查询结果行");
+  assert.ok(g.text.includes("4.20M") || g.text.includes("4.2M"), "应显示指标值");
+  // 口径脚注必须保留：它不是可选信息，删功能不能连带删掉
+  assert.ok(g.text.includes("UTC+8"), "网关日界口径必须保留");
+  assert.ok(g.text.includes("账号已脱敏"), "账号脱敏说明必须保留");
+});
+
+test("用量查询：请求带上 groupBy/subGroup/source/metric（后端据此聚合）", async () => {
+  const g = await gotoQuery()({});
+  const q = g.calls.filter((u) => u.indexOf("/api/token-meter/query") >= 0);
+  assert.ok(q.length >= 1, "应请求过 /api/token-meter/query");
+  const u = q[0];
+  assert.ok(u.includes("groupBy="), "必须带 groupBy");
+  assert.ok(u.includes("source="), "必须带 source");
+  assert.ok(u.includes("metric="), "必须带 metric");
+  // 主接口不应该被这一页的取数污染
+  assert.ok(u.includes("range=7d"), "默认区间应为 7d，实际：" + u);
+});
+
+test("用量查询：选了本机独有维度（项目/会话/工具/小时）时必须提示已排除网关", async () => {
+  // ⚠️ 这里不走"点击 → effect → 异步重查"的链路：测试桩的 useEffect 是同步立即执行、
+  // 不 await promise，切维度后拿到的永远是"查询中…"那一帧（实测）。
+  // 改为断言**渲染条件的来源**：本机独有维度清单与提示文案必须存在于源码，
+  // 且后端 local-only 判定必须成立（两侧口径同一份）。
+  const qSrc = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  assert.ok(qSrc.includes('var qLocalOnly = ["project","session","tool","hour"]'),
+    "客户端必须知道哪些维度是本机独有");
+  assert.ok(qSrc.includes("本次查询已自动排除网关数据"),
+    "选了本机独有维度时必须明确告知用户");
+  // 后端侧：只有本机有这些维度
+  const hSrc = readFileSync(new URL("../lib/index.js", import.meta.url), "utf-8");
+  for (const dim of ["project", "session", "tool", "hour"]) {
+    assert.ok(new RegExp(dim + ':\\s*\\{[^}]*scope:\\s*"local"').test(hSrc),
+      "后端应把 " + dim + " 标为 local-only");
+  }
+  for (const dim of ["day", "model", "provider"]) {
+    assert.ok(new RegExp(dim + ':\\s*\\{[^}]*scope:\\s*"both"').test(hSrc),
+      "后端应把 " + dim + " 标为两端都有");
+  }
+  assert.ok(/account:\s*\{[^}]*scope:\s*"gw"/.test(hSrc), "账号只属于网关侧");
+});
+
+test("用量查询表格：占比列 = 数字 + 46px 细条（样式 B），且比例必须线性", () => {
+  // 用户选定样式 B：占比列右侧一根 46×2px 的细条，表达数量级差。
+  // 两条硬约束，都有实测依据：
+  //   ① 宽度必须是 46px —— 274px 的轨道会让"条"比数字更抢眼（实测过）；
+  //   ② 比例必须**线性** —— sqrt/log 会把 72.3% 与 1.2% 的 66 倍差距压成 5 倍，
+  //      在表格里歪曲比例就是误导。代价是 1.2% 只剩 0.6px 不可见，这是诚实换来的。
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  const i = src.indexOf("// 表格（样式 B：占比列");
+  const j = src.indexOf("// 口径脚注", i);
+  assert.ok(i > 0 && j > i, "应能找到表格渲染段");
+  const seg = src.slice(i, j);
+
+  assert.ok(seg.includes("width:46"), "细条轨道必须是 46px 宽");
+  assert.ok(seg.includes("height:2"), "细条必须是 2px 高（再粗就抢数字的焦点）");
+  // 线性映射：直接拿 share 当宽度百分比，不做任何幂/对数变换
+  assert.ok(seg.includes('width:pctW+"%"'), "细条宽度必须直接取占比值（线性）");
+  assert.ok(!/Math\.(sqrt|log|pow)\s*\(/.test(seg),
+    "不得用 sqrt/log 放大长尾 —— 那会歪曲真实比例");
+  // 颜色分层：前 4 名有专属识别色，其余灰
+  assert.ok(seg.includes('["#6b87d9","#b08427","#c65f7f","#8d7ce4"]'),
+    "前 4 名应沿用「用量统计」模型榜的识别色，两页能对上号");
+  // 按「日」分组不应画彩色圆点（日期画彩点没有语义）
+  assert.ok(seg.includes('qGroup[0]==="model"||qGroup[0]==="provider"||qGroup[0]==="account"'),
+    "色点只在模型/渠道/账号分组下显示");
+});
+
+test("用量查询：已移除「存为视图」的全部实现（含 localStorage 读写）", () => {
+  // 用户明确要求不要再有这块功能。除了 UI，也要确认没有残留的持久化代码 ——
+  // 否则「界面上没有、但仍往 localStorage 写」会让人以为功能还在。
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  for (const dead of ["loadQueryViews", "saveQueryViews", "LS_QUERY_VIEWS", "oq_query_views", "QUERY_VIEW_MAX"]) {
+    assert.ok(!src.includes(dead), "不应残留「存为视图」的实现：" + dead);
+  }
+  // 导出的 CSV 按钮也应消失
+  assert.ok(!src.includes('children:"导出 CSV"'), "「导出 CSV」按钮应已移除");
+});
+
+test("用量查询：账号维度在维度清单里（用户要求）", async () => {
+  const g = await gotoQuery()({});
+  // 维度 pills 由后端 dimensions 驱动；账号必须有
+  assert.ok(g.text.includes("账号"), "查询条件里应有「账号」维度可选");
+});
+
+test("用量查询：解析失败时必须报出 HTTP 状态（不能只说 bad json）", () => {
+  // 真机现象：设置页「用量查询」显示 "bad json"。
+  // 排查结论：宿主进程启动于 08:19，而 lib/index.js 改于 13:44 —— **没重启**，
+  // /api/token-meter/query 路由不存在 ⇒ webserver 回 HTML 404 ⇒ r.json() 抛错
+  // ⇒ 只剩一句 bad json，用户完全无法判断是鉴权、路由还是崩溃。
+  // 现在解析失败会把状态码与响应片段一起报出来，这条锁住该行为。
+  // 只检查 fetchQuery 函数体（余额查询那几个端点同样有待改进，但不属于本次范围）。
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  const i = src.indexOf("async function fetchQuery");
+  const j = src.indexOf("function apply(ctx)", i);
+  const seg = src.slice(i, j);
+  assert.ok(seg.includes('"HTTP "+r.status'), "解析失败的分支必须带 HTTP 状态码");
+  assert.ok(seg.includes("空响应"), "空 body 要显式说明（403/404 的典型表现）");
+  assert.ok(!seg.includes('error:"bad json"'),
+    "fetchQuery 不得再只回一句 bad json —— 那是无法自诊断的错误信息");
+  assert.ok(seg.includes("JSON.parse(raw)"), "应先取 text 再 parse，才能保留原始响应片段");
+});
+
+test("用量查询：内容区不再重复 tab 名（tab 已写「用量查询」）", () => {
+  // 真机反馈：tab 叫「用量查询」，内容区顶部的 groupHead 又写一遍同名标题，
+  // 同一句话说两遍。其他 tab 的 groupHead 是**子分区**标题（如「外观」下的
+  // 「悬浮窗外观」），语义不同，那些不能一起删。
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  const i = src.indexOf("var queryPanel=");
+  const j = src.indexOf("//（预设/A-B-C 风格只存本机", i);
+  assert.ok(i > 0 && j > i, "应能找到查询面板段");
+  const seg = src.slice(i, j);
+  // 只匹配**真正的调用**（行首缩进 + 分号/逗号结尾），不匹配注释里提到的字面量。
+  assert.ok(!/^\s*groupHead\("用量查询"\)\s*[,;]?\s*$/m.test(seg),
+    "内容区不得再出现与 tab 同名的 groupHead 调用");
+  // 但其他 tab 的子分区标题必须还在（防止"顺手全删"）
+  assert.ok(src.includes('groupHead("悬浮窗外观")'), "「外观」tab 的子分区标题应保留");
+  assert.ok(src.includes('groupHead("维护")'), "「维护」tab 的子分区标题应保留");
+  assert.ok(src.includes('groupHead("网关")'), "「网关」tab 的子分区标题应保留");
+});
