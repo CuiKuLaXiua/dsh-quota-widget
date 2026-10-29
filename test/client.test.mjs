@@ -1,6 +1,7 @@
 // 浏览器半端纯函数单测（node:test）：热力分档与 1d 分时图的"今天"过滤。
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { loadClientModule } from "./load-client.mjs";
 
@@ -818,4 +819,170 @@ test("DETAIL_COLS：列定义覆盖用户选的三类（基础/拆分/扩展）"
   }
   // 每列都要有中文表头（表头为空会让用户看不懂）
   for (const c of DETAIL_COLS) assert.ok(c[1] && c[1].length > 0, c[0] + " 缺表头");
+});
+
+// ── 刻度盘（方案 E）：几何约束 ────────────────────────────────────────────
+// 真机实测发现的两个坑，这里钉死：
+//   ① 中央数字会压刻度：`88%`（11px/800）占 22.2×15、半对角 13.4px，
+//      模板原版内径 11.4 ⇒ 越界 2.0px；`100%` 半对角 15.5px ⇒ 越界 4.1px。
+//   ② 指针比刻度细/短就看不出来（原版 1.7px 宽、与刻度同外径）。
+// jsx 桩不保留 React 的 key，只能靠 style 区分三类线：
+//   点亮刻度 #c65f7f / 未点亮 rgba(255,255,255,0.16) / 指针 #ff8fab
+const DIAL_LIT = "#c65f7f";
+const DIAL_OFF = "rgba(255,255,255,0.16)";
+const DIAL_NEEDLE = "#ff8fab";
+const dialLines = (pct) => T.ringDialParts(T.RING_SIZE, pct).filter((p) => p.type === "line");
+
+test("刻度盘：24 根刻度 + 指针，且内径必须给中央数字让位", () => {
+  const { RING_SIZE, DIAL_R_IN, DIAL_R_OUT, DIAL_R_OUT_ON } = T;
+  const lines = dialLines(50);
+  const ticks = lines.filter((p) => p.props.style.stroke !== DIAL_NEEDLE);
+  const needle = lines.filter((p) => p.props.style.stroke === DIAL_NEEDLE);
+  assert.equal(ticks.length, 24, "应恰好 24 根刻度，实际 " + ticks.length);
+  assert.equal(needle.length, 1, "50% 时应画 1 根指针");
+
+  // 内径必须 >= 13.6：`88%` 的半对角是 13.4，取 13.6 才不压刻度
+  assert.ok(DIAL_R_IN >= 13.5,
+    "刻度内径必须 >=13.5（88% 中央文字半对角 13.4，原版 11.4 会越界 2px），实际 " + DIAL_R_IN);
+  // 外径不能大到被 40px 高的 head 裁掉：2*外径 <= 40
+  assert.ok(DIAL_R_OUT_ON * 2 <= 40,
+    "点亮刻度外径 *2 应 <=40px（head 定高 40），实际 " + DIAL_R_OUT_ON * 2);
+  // 点亮刻度必须比未点亮更长（这是"可数"的视觉基础）
+  assert.ok(DIAL_R_OUT_ON > DIAL_R_OUT,
+    "点亮刻度应更长：on=" + DIAL_R_OUT_ON + " off=" + DIAL_R_OUT);
+});
+
+test("刻度盘：已达成的刻度数与百分比一致（0%/50%/100% 边界）", () => {
+  const litCount = (pct) => dialLines(pct).filter((p) => p.props.style.stroke === DIAL_LIT).length;
+  assert.equal(litCount(0), 0, "0% 不应点亮任何刻度");
+  assert.equal(litCount(50), 12, "50% 应点亮 12/24 根");
+  assert.equal(litCount(100), 24, "100% 应点亮全部 24 根");
+  assert.equal(litCount(null), 0, "无数据时不点亮任何刻度");
+});
+
+test("刻度盘：0% 与 100% 不画指针（否则与刻度糊在一起）", () => {
+  const hasNeedle = (pct) => dialLines(pct).some((p) => p.props.style.stroke === DIAL_NEEDLE);
+  assert.equal(hasNeedle(0), false, "0% 指针对应第一根刻度，画上去反而糊");
+  assert.equal(hasNeedle(100), false, "100% 指针对应最后一根刻度，同上");
+  assert.equal(hasNeedle(50), true, "中间值必须有指针");
+});
+
+test("刻度盘：RING_VARIANT 默认 dial，且调用处真的用上了", () => {
+  assert.equal(T.RING_VARIANT, "dial", "默认应使用刻度盘（方案 E）");
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  // 传的是 ringPct（一位小数），不是取整后的 hitPct —— 刻度盘配色/点亮仍按整数走。
+  assert.ok(src.includes("ringEl(ringPct, { id: \"tm\", variant: RING_VARIANT })"),
+    "调用处必须传 variant，否则改了常量也不生效");
+});
+
+// ── 刻度盘中央文字：一位小数 + 字号按长度自适应 ─────────────────────────
+// 用户要求"保留一位小数、缩小字体保证显示完整"。
+// 内径 r=13.6 能容纳的矩形半对角 = hypot(宽/2, 高/2)，以下尺寸均为 Chromium
+// 实测（Segoe UI, font-weight 800, tabular-nums），不是估算：
+//   11px / ls -0.3  : `0.0%` 宽 25.4 → 需 14.7  ✗ 越界 1.1
+//   9.5px / ls -0.9 : `92.3%` 宽 24.2 → 需 13.5  ✓ 刚好
+//   8.5px / ls -0.9 : `100.0%` 宽 24.3 → 需 13.4  ✓
+test("fmtPct1：保留一位小数，边界钳到 0~100", () => {
+  assert.equal(T.fmtPct1(92.34), "92.3");
+  assert.equal(T.fmtPct1(92.35), "92.4");
+  assert.equal(T.fmtPct1(0), "0.0");
+  assert.equal(T.fmtPct1(100), "100.0", "满值也要带一位小数（用户要求）");
+  assert.equal(T.fmtPct1(99.96), "100.0", "四舍五入到 100 时按 100.0 显示");
+  assert.equal(T.fmtPct1(100.4), "100.0", "超过 100 钳到 100.0");
+  assert.equal(T.fmtPct1(-1), "0.0", "负数钳到 0.0");
+  assert.equal(T.fmtPct1(null), "—");
+  assert.equal(T.fmtPct1(NaN), "—");
+});
+
+test("刻度盘中央文字：一位小数后，4/5/6 字符各自用对字号（防压刻度）", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  // 11px 只留给 `—`（1 字符）。带小数后最短也有 4 字符（`0.0%`），
+  // 11px 下需内径 14.7 > 13.6 会压刻度 —— 这正是本次修的坑。
+  assert.ok(src.includes('var big = n <= 1;'),
+    "11px 只能用于 1 字符（`—`）；4 字符的 `0.0%` 用 11px 会越界 1.1px");
+  assert.ok(src.includes('fontSize: big ? "11px" : (six ? "8.5px" : "9.5px")'),
+    "字号必须按 1 / 4~5 / 6 字符三档取值");
+  assert.ok(src.includes('letterSpacing: big ? "-0.3px" : "-0.9px"'),
+    "带小数的文本必须收紧字距（-0.9px），否则 5 字符放不下");
+});
+
+test("刻度盘：点亮/配色仍按整数 hitPct，只有中央文字用 ringPct（一位小数）", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  // 传给 ringEl 的是 ringPct（小数），ringEl → ringDialParts 内部按刻度比例判定
+  assert.ok(src.includes("ringEl(ringPct,"), "刻度盘应拿到一位小数的值");
+  // 但颜色分档与进度弧仍用整数 hitPct，避免"92.3 点亮第 23 根、显示 92"这种错位
+  assert.ok(src.includes("var hitPct = hitRate!=null? Math.round(hitRate): null;"),
+    "hitPct 必须保持整数（配色分档用）");
+  assert.ok(src.includes("fmtPct1(ringPct)"), "中央文字必须走 fmtPct1（一位小数）");
+});
+
+// ===== 通用 tooltip（oqTip）=====
+// 背景：热力图有一套富 tooltip，其余各处都是原生 title（系统灰框、~1s 延迟、
+// 不能富内容）。用户明确说热力图那套"设计非常不错"，要求其余几处也用它。
+// 这里锁的是"富结构"与"注入防护"两件事 —— 定位/动画需要真实 DOM，靠渲染测试覆盖。
+test("oqTipBuild：五层结构齐全（head / main / rows / div / footer）", () => {
+  const html = T.oqTipBuild({
+    head: "网关用量 · UTC+8 日界",
+    main: { text: "31.1M", color: "#b3aaff", sub: "tokens" },
+    rows: [
+      { k: "占总量", v: "62.1%", color: "#b3aaff" },
+      "div",
+      { k: "网关", v: "31.1M", dot: "#8b7bff" },
+    ],
+    footer: "合计 50.1M",
+  });
+  assert.ok(html.includes('class="tt-head"'), "应有小号灰标题");
+  assert.ok(html.includes('class="tt-main"'), "应有大号主值");
+  assert.ok(html.includes('class="tt-div"'), "应有分隔线（rows 里的 \"div\"）");
+  assert.ok(html.includes('class="tt-foot"'), "应有脚注");
+  // main 的 sub 是紧跟其后的小字（"31.1M tokens" 的 tokens）
+  assert.ok(html.includes(">tokens<"), "main.sub 应作为小字渲染");
+  // 色点
+  assert.ok(html.includes('class="tt-dot"'), "row.dot 应渲染成色点");
+  assert.ok(html.includes("background:#8b7bff"), "色点应带上给定的颜色");
+});
+
+test("oqTipBuild：所有文本必须转义（模型名来自会话事件/别人的账本）", () => {
+  const html = T.oqTipBuild({
+    head: '<img src=x onerror=alert(1)>',
+    main: { text: '"><script>alert(2)</script>' },
+    rows: [{ k: "<b>k</b>", v: "a&b" }],
+    footer: "<i>f</i>",
+  });
+  assert.ok(!html.includes("<img"), "head 里的 <img> 必须被转义");
+  assert.ok(!html.includes("<script"), "main 里的 <script> 必须被转义");
+  assert.ok(!html.includes("<b>k</b>"), "row.k 的标签必须被转义");
+  assert.ok(!html.includes("<i>f</i>"), "footer 的标签必须被转义");
+  assert.ok(html.includes("&lt;img"), "应转成实体");
+  assert.ok(html.includes("&amp;"), "& 应转成 &amp;");
+});
+
+test("oqTipBuild：lv 强度点阵（热力图专用）", () => {
+  const html = T.oqTipBuild({ head: "x", main: { text: "1" }, lv: { max: 4, on: 2, label: "强度 lv2" } });
+  assert.ok(html.includes('class="tt-lv"'), "应有强度点阵容器");
+  const dots = (html.match(/<i style="background:var\(--bmon-h/g) || []).length;
+  assert.equal(dots, 5, "max=4 时应渲染 5 个方块（0..4）");
+  assert.ok(html.includes("强度 lv2"), "应显示档位文字");
+  // 当前档位加白描边（否则看不出一共几档、当前第几档）
+  assert.ok(html.includes("box-shadow:0 0 0 1px rgba(255,255,255,0.7)"), "当前档位应有描边标记");
+});
+
+test("oqTipBuild：空/缺字段不崩，不产出 undefined 文本", () => {
+  assert.equal(T.oqTipBuild(null), "");
+  assert.equal(T.oqTipBuild({}), "");
+  const onlyRows = T.oqTipBuild({ rows: [{ k: "a", v: 1 }] });
+  assert.ok(onlyRows.includes(">1<"), "数字 value 应能渲染");
+  assert.ok(!/undefined/.test(onlyRows), "不应出现 undefined");
+  // null 值的 v 渲染成空串而不是 "null"
+  const nullV = T.oqTipBuild({ rows: [{ k: "a", v: null }] });
+  assert.ok(!/null/.test(nullV), "null 不应渲染成字符串 null");
+});
+
+test("tipProps：spec 必须延迟求值（数据每 5s 刷新，不能捕获旧值）", () => {
+  let counter = 0;
+  const props = T.tipProps(() => ({ head: "n=" + (++counter) }));
+  assert.equal(typeof props.onMouseEnter, "function");
+  assert.equal(typeof props.onMouseLeave, "function");
+  // 调用前不应求值（否则拿到的就是渲染那一刻的旧数据）
+  assert.equal(counter, 0, "tipProps 不能在挂载时就调用 spec");
 });

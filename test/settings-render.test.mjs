@@ -1321,3 +1321,44 @@ test("LIVE_CHANNEL：直连 / 网关 / 两者 三态各自可辨，且与 LIVE_J
     if (kind) assert.equal(live, true, "徽标亮着时 LIVE_JUDGE 必须为 true（否则会出现说不清的态）");
   }
 });
+
+test("悬浮窗 tooltip 统一：不该再有原生 title（除设置页等非悬浮窗区域）", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  // 只检查紧凑悬浮窗的两个渲染函数区间
+  const i = src.indexOf("function renderTmCompact");
+  const j = src.indexOf("function renderTmClassic");
+  const seg = src.slice(i, j);
+  const titles = (seg.match(/\btitle:/g) || []).length;
+  assert.equal(titles, 0,
+    "renderTmCompact 内不应再有原生 title（应改用 tipProps 的富 tooltip），实际还有 " + titles + " 处");
+});
+
+test("悬浮窗 tooltip 统一：网关胶囊/模型名/请求胶囊/迷你柱/圆环都接了 tipProps", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  // 关键位置逐个确认（这些是用户点名要改的）
+  const sites = [
+    ["网关胶囊", /function gwBadgeEl\(sources\)[\s\S]{0,3000}?tipProps\(/],
+    ["仅本机角标", /children:"仅本机"[\s\S]{0,600}?tipProps\(/],
+    ["请求胶囊", /function gwReqPill[\s\S]{0,1200}?tipProps\(/],
+    ["榜首模型", /topModel\? jsx_runtime\.jsxs\("span",Object\.assign\(\{[\s\S]{0,400}?tipProps\(/],
+    ["迷你柱", /miniDays\.map\(function\(d,i\)\{[\s\S]{0,900}?tipProps\(/],
+    ["圆环", /className:"oq-tm-ring"[\s\S]{0,600}?tipProps\(/],
+  ];
+  for (const [name, re] of sites) {
+    assert.ok(re.test(src), "「" + name + "」应已接入 tipProps");
+  }
+});
+
+test("Live 徽标：改用富 tooltip，且仍保留三态可达性信息", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+  const i = src.indexOf("function LIVE_BADGE");
+  const seg = src.slice(i, i + 2400);
+  assert.ok(seg.includes("tipSpec"), "LIVE_BADGE 应构造 tipSpec");
+  assert.ok(seg.includes("tipProps("), "LIVE_BADGE 应接入 tipProps");
+  assert.ok(!/\btitle:\s*title/.test(seg), "不应再传原生 title");
+  // 三态的语义必须写在 rows 里（色弱用户的唯一通道）
+  for (const kw of ["仅直连", "仅网关", "直连 ＋ 网关"]) {
+    assert.ok(seg.includes(kw), "tooltip 应说明「" + kw + "」");
+  }
+});
+
