@@ -1309,7 +1309,8 @@ test("网关角标：显示实际 token 数 + 朝上小三角（方案 B），�
   assert.ok(!src.includes('"含网关 "'),
     "不得再出现「含网关」文案");
   // 朝上三角：border 三边透明 + 上边框实色，是 CSS 三角的标准写法
-  assert.ok(src.includes("borderBottom:\"4px solid rgba(139,123,255,0.42)\""),
+  // 主色已从品牌紫 #8b7bff 统一为珊瑚（2026-11-01），这里只跟色值，写法不变
+  assert.ok(src.includes("borderBottom:\"4px solid rgba(217,155,134,0.42)\""),
     "应有朝上的 CSS 三角（borderBottom 实色 + 左右透明）");
   // 三角在胶囊**左侧**（用户要求"三角靠左"）：落在「网关」二字附近，
   // 读起来是「↑ 网关」，与上方总量的关联由垂直方向承担，不再依赖
@@ -1320,20 +1321,66 @@ test("网关角标：显示实际 token 数 + 朝上小三角（方案 B），�
     "不应再回到 right 定位（那会挂到胶囊右端，与「网关」二字脱开）");
 });
 
-test("Live 三态：文字恒为 Live，只靠颜色区分（用户要求）", () => {
+test("Live 三态：文字恒为 Live，颜色 + 形状双通道区分", () => {
   const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
-  const l = (s, m) => (s.match(m) || [])[0];
   // 三态的 text 必须都是 Live
   const styleBlock = src.slice(src.indexOf("var LIVE_STYLE = {"), src.indexOf("};", src.indexOf("var LIVE_STYLE = {")));
   const texts = [...styleBlock.matchAll(/text:"([^"]+)"/g)].map((m) => m[1]);
   assert.deepEqual(texts, ["Live", "Live", "Live"],
     "三态的文字必须都是 Live —— 换成「网关」会让状态看起来像标签/入口");
-  // 颜色必须三者互不相同（否则"只靠颜色区分"就不成立）
+
+  // 颜色必须三者互不相同
   const colors = [...styleBlock.matchAll(/color:"(#[0-9a-fA-F]{6})"/g)].map((m) => m[1].toLowerCase());
   assert.equal(new Set(colors).size, 3, "三态颜色必须互不相同，实际 " + colors.join(","));
-  // 网关态刻意避开紫色：紫色是网关「量」的用色（胶囊），状态点再用紫会撞色
+
+  // 色相护栏：任意两态 ΔH >= 25°，且都远离主色珊瑚（ΔH >= 90°）。
+  //
+  // 为什么阈值是 25° 而不是更高：三态必须同时避开珊瑚所在的暖橙区，
+  // 于是只能挤在绿..靛这段冷色带（约 160°~243°），带宽 83° 装不下
+  // 三色各相隔 60°。区分度主要由**形状**承担（见下方 shape 断言），
+  // 颜色只需保证"不是同一个颜色"，并坚决不撞主色。
+  //
+  // 历史教训：网关态曾用琥珀 #e8a55a，主色改珊瑚后两者只差 17°，
+  // tooltip 里"仅网关"又是另一个橙 #d4a017（差 11°）——三态直接糊成一个。
+  const MAIN_ACCENT = "#cc785c";   // 珊瑚，见 lib/client.js 的 --oq-accent
+  function hue(hex) {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    if (d === 0) return 0;
+    let h;
+    if (mx === r) h = ((g - b) / d) % 6;
+    else if (mx === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    return h < 0 ? h + 360 : h;
+  }
+  function dist(a, b) {
+    const d = Math.abs(a - b) % 360;
+    return d > 180 ? 360 - d : d;
+  }
+  for (let i = 0; i < colors.length; i++) {
+    for (let j = i + 1; j < colors.length; j++) {
+      const dh = dist(hue(colors[i]), hue(colors[j]));
+      assert.ok(dh >= 25,
+        `三态色相太近：${colors[i]} vs ${colors[j]} 只差 ${dh.toFixed(0)}°，应 >=25°`);
+    }
+    // 每一态都必须远离主色珊瑚，否则状态点会融进页面强调色
+    const dm = dist(hue(colors[i]), hue(MAIN_ACCENT));
+    assert.ok(dm >= 90,
+      `状态色 ${colors[i]} 距主色珊瑚只有 ${dm.toFixed(0)}°，会被强调色淹没（应 >=90°）`);
+  }
+
+  // 第二通道：形状必须三态互不相同（色弱用户靠它区分）
+  const shapes = [...styleBlock.matchAll(/shape:"([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(shapes.length, 3, "三态都应声明 shape，实际 " + shapes.length);
+  assert.equal(new Set(shapes).size, 3, "三态形状必须互不相同，实际 " + shapes.join(","));
+  assert.ok(src.includes("function LIVE_DOT("), "应有 LIVE_DOT 负责渲染形状");
+
+  // 网关态不得再用橙色系（那是珊瑚主色的邻域）
   assert.ok(!colors.includes("#8b7bff"),
-    "网关态的 Live 不能用 #8b7bff —— 那是网关角标的颜色，会分不清哪个在 pulse");
+    "网关态的 Live 不能用品牌紫 —— 那是网关角标的颜色，会分不清哪个在 pulse");
 });
 
 test("LIVE_CHANNEL：直连 / 网关 / 两者 三态各自可辨，且与 LIVE_JUDGE 同源", async () => {
@@ -1568,4 +1615,87 @@ test("用量查询：内容区不再重复 tab 名（tab 已写「用量查询�
   assert.ok(src.includes('groupHead("悬浮窗外观")'), "「外观」tab 的子分区标题应保留");
   assert.ok(src.includes('groupHead("维护")'), "「维护」tab 的子分区标题应保留");
   assert.ok(src.includes('groupHead("网关")'), "「网关」tab 的子分区标题应保留");
+});
+
+// ── 范围筛选按钮（滑动下划线 · 方案 C）──
+// 锁住三件容易回退的事：旧紫残留、hover/按下反馈、以及选中态的可读性。
+test("范围筛选：滑动下划线 + hover/按下反馈，且无旧紫残留", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+
+  // 1. 结构：必须用 class（内联样式写不出 ::after 伪元素）
+  assert.ok(src.includes('className:"oq-range"'), "应有 .oq-range 容器");
+  assert.ok(src.includes('className:"oq-range-btn"'), "按钮应使用 .oq-range-btn 类");
+
+  // 2. 下划线：::after + scaleX
+  assert.ok(src.includes(".oq-range-btn::after{"), "必须有 ::after 作为下划线");
+  assert.ok(src.includes("transform:scaleX(0)"), "下划线默认应收起 scaleX(0)");
+  assert.ok(src.includes(".oq-range-btn[data-active='1']::after"), "选中态必须有独立规则");
+  assert.ok(src.includes("transform:scaleX(.56)"), "选中态下划线应展开到 56%");
+
+  // 3. hover / 按下 反馈
+  assert.ok(src.includes(".oq-range-btn:hover::after"), "hover 时下划线应半展开");
+  assert.ok(src.includes("transform:scaleX(.36)"), "hover 半展开幅度应为 36%");
+  assert.ok(src.includes(".oq-range-btn:active{transform:scale(.94)}"), "按下应有轻微内缩");
+
+  // 4. 无障碍
+  assert.ok(src.includes(".oq-range-btn:focus-visible"), "必须支持键盘焦点可见");
+  assert.ok(src.includes("prefers-reduced-motion:reduce") && src.includes(".oq-range-btn"),
+    "必须尊重 prefers-reduced-motion");
+
+  // 5. 旧紫不得回流
+  assert.ok(!src.includes("rgba(109,91,255"), "不得再出现旧品牌紫 rgba(109,91,255)");
+});
+
+// ── Live 混合态：双子点 + 两色交替呼吸 ──
+// 为什么换掉圆环：6px 上绿蓝渐变只有约 4px 可见边、两色混成青色；
+// 中空处还要靠卡片底色盖出来，叠在玻璃/亚克力上会露出方形色块。
+test("Live 混合态：绿蓝双子点，且两色交替呼吸", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+
+  // 1. 形状名改为 dual-dots，且 dots 是真两色（不是渐变字符串）
+  assert.ok(src.includes('shape:"dual-dots"'), "混合态应使用 dual-dots 形状");
+  assert.ok(!src.includes('shape:"dual-ring"'), "不得回退到旧的圆环方案");
+  const bothLine = src.split("\n").find(l => l.includes("both:") && l.includes("dual-dots"));
+  assert.ok(bothLine, "应能找到 both 态定义");
+  assert.ok(bothLine.includes('dots:["#10b981","#3b82f6"]'),
+    "both 应声明绿蓝两个点色，实际: " + bothLine);
+
+  // 2. 两个点各 5px（比单态 6px 略小，合计 11px 视觉重量相当）
+  assert.ok(src.includes("width:5,height:5"), "双子点应为 5×5");
+  assert.ok(!src.includes('padding:1.5,\n          background:LIVE_BOTH_GRAD'),
+    "不应再用 padding 挖空的圆环画法");
+
+  // 3. 交替呼吸：两个方向相反的关键帧
+  assert.ok(src.includes("@keyframes oq-alt-a"), "应有 oq-alt-a 关键帧");
+  assert.ok(src.includes("@keyframes oq-alt-b"), "应有 oq-alt-b 关键帧");
+  assert.ok(src.includes("oq-alt-a 1.6s"), "点 A 应跑 oq-alt-a");
+  assert.ok(src.includes("oq-alt-b 1.6s"), "点 B 应跑 oq-alt-b");
+  // 相位必须相反：a 从 1 开始、b 从谷值开始
+  assert.ok(/oq-alt-a\{0%,100%\{opacity:1\}50%\{opacity:\.45\}\}/.test(src),
+    "oq-alt-a 应从全亮到 0.45");
+  assert.ok(/oq-alt-b\{0%,100%\{opacity:\.45\}50%\{opacity:1\}\}/.test(src),
+    "oq-alt-b 应与 a 反相");
+
+  // 4. 减少动效：必须停在"全亮"而不是一亮一暗的中间态
+  //    选择器现在同时覆盖混合态双点 [data-live-dot] 与单态点 .oq-live-dot
+  assert.ok(src.includes("prefers-reduced-motion") &&
+            /\[data-live-dot\],\.oq-live-dot\{animation:none!important;opacity:1!important\}/.test(src),
+    "reduced-motion 下所有状态点都应全亮（不能停留在一亮一暗）");
+
+  // 5. 单态呼吸：必须真的在动，且不能只动 box-shadow
+  //    （旧版 70%~100% 周期 alpha 恒为 0，6px 上看起来像"闪一下就没了"）
+  assert.ok(src.includes("@keyframes oq-pulse"), "应有单态呼吸关键帧");
+  // 关键帧是跨行字符串拼接的，不能只取含 "@keyframes oq-pulse" 的那一行
+  const pStart = src.indexOf("@keyframes oq-pulse");
+  const pulseBlock = src.slice(pStart, pStart + 420);
+  assert.ok(pulseBlock.includes("opacity"),
+    "单态呼吸必须改 opacity —— 只动 box-shadow 在 6px 上不可见");
+  assert.ok(/50%\{opacity:\.55/.test(pulseBlock), "单态呼吸谷值应为 0.55");
+  assert.ok(src.includes("oq-pulse 1.6s ease-in-out"), "单态呼吸应用 ease-in-out");
+  assert.ok(src.split('className:"oq-live-dot"').length - 1 >= 2,
+    "单态点（圆/菱形）都应带 oq-live-dot 类，供 reduced-motion 覆盖");
+
+  // 5. tooltip 文案要同步（色弱用户靠这行确认）
+  assert.ok(src.includes("绿点 ＋ 蓝点"), "tooltip footer 应描述双点");
+  assert.ok(!src.includes("绿蓝渐变圆环"), "不得残留圆环的旧文案");
 });

@@ -18,7 +18,7 @@ const T = (await loadClientModule({
     throw new Error("unexpected require: " + name);
   },
 })).__testing;
-const { HEAT_LV, heatLvOf, groupTodayHourBuckets, fmtTokens } = T;
+const { HEAT_LV, heatLvOf, heatBaseOf, heatSampleOf, groupTodayHourBuckets, fmtTokens } = T;
 
 // 悬浮窗图表形态的读写闭环：loadTmChart 只认 bar/heat，写入由设置页「小窗口图表」卡片驱动。
 // 历史上这两个 key 拆开之后，悬浮窗的 save 函数变成了没人调用的死代码，
@@ -84,13 +84,81 @@ test("heatLvOf：同值样本落同一档（避免同日多格颜色不一）", 
   assert.equal(heatLvOf(10, vals, true, 90), heatLvOf(10, vals, true, 90));
 });
 
-test("heatLvOf：样本不足时走 sqrt 连续映射，2-3 个点也能拉开档位", () => {
+test("heatLvOf：样本不足时也能拉开档位（线性等分）", () => {
   const lvSmall = heatLvOf(1, null, false, 100);
   const lvMid = heatLvOf(25, null, false, 100);
   const lvMax = heatLvOf(100, null, false, 100);
   assert.ok(lvSmall >= 1 && lvSmall <= HEAT_LV);
   assert.ok(lvSmall < lvMid && lvMid < lvMax, `应随用量递增: ${lvSmall},${lvMid},${lvMax}`);
-  assert.equal(lvMax, HEAT_LV);
+  assert.equal(lvMax, HEAT_LV, "达到基准线必须是最档");
+});
+
+test("heatLvOf：v >= base 一律最高档（不做超出拉伸）", () => {
+  assert.equal(heatLvOf(100, null, false, 100), HEAT_LV);
+  assert.equal(heatLvOf(150, null, false, 100), HEAT_LV, "超过基准仍是 h6，不额外分档");
+  assert.equal(heatLvOf(9999, null, false, 100), HEAT_LV);
+});
+
+test("heatBaseOf：(max + p90)/2 —— 抗单日离群值", () => {
+  // 18 天正常分布 + 1 个 1500M 的异常日
+  const normal = [100, 120, 150, 180, 200, 220, 250, 280, 300, 320,
+    350, 380, 400, 450, 500, 550, 600, 803].map(v => v * 1e6);
+  const withOutlier = normal.concat([1500e6]);
+
+  const baseNormal = heatBaseOf(normal);
+  const baseOutlier = heatBaseOf(withOutlier);
+
+  // 纯 max 会被离群值绑架；折中后基准应显著低于 max
+  assert.ok(baseNormal <= Math.max(...normal), "基准不应超过 max");
+  assert.ok(baseOutlier < 1500e6 * 0.95, "折中基准必须被拉回，不能等于异常日");
+
+  // 均匀度：注入异常值后仍应保持可用（各档天数不出现空档）
+  function dist(vals) {
+    const b = heatBaseOf(vals);
+    const c = {};
+    vals.forEach(v => { const lv = heatLvOf(v, null, false, b); c[lv] = (c[lv] || 0) + 1; });
+    const counts = [];
+    for (let i = 1; i <= HEAT_LV; i++) counts.push(c[i] || 0);
+    return counts;
+  }
+  const dNormal = dist(normal);
+  const dOutlier = dist(withOutlier);
+  const usedNormal = dNormal.filter(x => x > 0).length;
+  const usedOutlier = dOutlier.filter(x => x > 0).length;
+  assert.ok(usedNormal >= 5, "正常月应至少用到 5 档，实际 " + dNormal.join("/"));
+  assert.ok(usedOutlier >= 4, "注入异常日后仍应至少用到 4 档，实际 " + dOutlier.join("/"));
+
+  // 空样本不应崩
+  assert.equal(heatBaseOf([]), 0);
+  assert.equal(heatBaseOf([0, 0]), 0);
+});
+
+test("heatSampleOf：当月不足 7 天时回落到最近 90 天历史", () => {
+  const daily = [];
+  // 90 天内的历史（上月 + 本月）
+  for (let i = 1; i <= 20; i++) {
+    daily.push({ date: "2026-10-" + String(i).padStart(2, "0"), total: (100 + i * 10) * 1e6 });
+  }
+  // 当月只有 2 天
+  daily.push({ date: "2026-11-01", total: 200e6 });
+  daily.push({ date: "2026-11-02", total: 300e6 });
+
+  const octSample = heatSampleOf(daily, "2026-10-", "2026-10-31");
+  assert.equal(octSample.length, 20, "当月样本充足时应只用当月");
+
+  const novSample = heatSampleOf(daily, "2026-11-", "2026-11-02");
+  assert.ok(novSample.length > 2, "当月不足 7 天时应包含历史，实际 " + novSample.length);
+  assert.ok(novSample.includes(200e6), "历史样本应含当月值");
+
+  // 当月够 7 天后切回当月
+  for (let i = 3; i <= 9; i++) {
+    daily.push({ date: "2026-11-" + String(i).padStart(2, "0"), total: (250 + i * 10) * 1e6 });
+  }
+  const novFull = heatSampleOf(daily, "2026-11-", "2026-11-09");
+  assert.equal(novFull.length, 9, "凑够 7 天后应切回当月");
+
+  // 完全无数据
+  assert.equal(heatSampleOf([], "2026-11-", "2026-11-02").length, 0);
 });
 
 test("groupTodayHourBuckets：只保留当天小时桶，且按小时聚合多模型", () => {
@@ -576,21 +644,21 @@ test("胶囊：底色/描边必须够实（旧的 0.42 中部 + 0.18 描边看�
   assert.ok(cap, "应有胶囊本体规则");
 
   // 底色取"中间亮度"：既不能像最初 0.10/0.42 那样淡到像半截（用户第一次反馈），
-  // 也不能像 0.72/0.92 那样深成实心紫（用户第二次反馈"太深了"）。
+  // 也不能像 0.72/0.92 那样深成实心珊瑚（用户第二次反馈"太深了"）。
   // 判定用区间：两端 0.35~0.60，中部 0.65~0.85。
-  const alphas = [...cap[1].matchAll(/rgba\(152,140,255,([\d.]+)\)/g)].map((m) => Number(m[1]));
-  assert.ok(alphas.length >= 2, "渐变两端应使用 rgba(152,140,255,α)，实际 " + cap[1]);
+  const alphas = [...cap[1].matchAll(/rgba\(212,158,138,([\d.]+)\)/g)].map((m) => Number(m[1]));
+  assert.ok(alphas.length >= 2, "渐变两端应使用 rgba(212,158,138,α)，实际 " + cap[1]);
   for (const a of alphas) {
     assert.ok(a >= 0.35 && a <= 0.6, "渐变两端不透明度应在 0.35~0.6，实际 " + a);
   }
-  const core = cap[1].match(/rgba\(133,118,244,([\d.]+)\)/);
-  assert.ok(core, "渐变中部应使用 rgba(133,118,244,α)，实际 " + cap[1]);
+  const core = cap[1].match(/rgba\(198,140,118,([\d.]+)\)/);
+  assert.ok(core, "渐变中部应使用 rgba(198,140,118,α)，实际 " + cap[1]);
   const coreA = Number(core[1]);
   assert.ok(coreA >= 0.65 && coreA <= 0.85, "渐变中部不透明度应在 0.65~0.85，实际 " + coreA);
 
   // 描边：弱于 0.55（太深），强于 0.18（太淡）
-  const ring = cap[1].match(/0 0 0 1px rgba\(164,152,255,([\d.]+)\)/);
-  assert.ok(ring, "描边应使用 rgba(164,152,255,α)，实际 " + cap[1]);
+  const ring = cap[1].match(/0 0 0 1px rgba\(228,172,152,([\d.]+)\)/);
+  assert.ok(ring, "描边应使用 rgba(228,172,152,α)，实际 " + cap[1]);
   const ringA = Number(ring[1]);
   assert.ok(ringA >= 0.3 && ringA <= 0.5, "描边不透明度应在 0.3~0.5，实际 " + ringA);
 });
