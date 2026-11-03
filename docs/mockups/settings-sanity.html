@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>I · Sanity — 设置页七 Tab 模版（第二轮）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════
+   方案 I · Sanity
+   来源：awesome-design-md/design-md/sanity/DESIGN.md（纯 Markdown 格式）
+   ── 硬约束 ───────────────────────────────────────────────
+   · 近黑 #0b0b0b 是"自然状态"而非暗色模式；纯灰阶 #212121 / #353535 / #797979
+   · 珊瑚红 #f36458 是主 CTA；电蓝 #0052ef 是全站 hover/激活信号
+   · 霓虹绿 #19d600 只做成功态
+   · waldenburgNormal 极负字距（display 用 -1.68px 起）；IBM Plex Mono 做技术标签
+   · pill 主按钮 (99999px) vs 3–6px 次级圆角 —— 这种强烈对比是它的签名
+   · 本方案结构：左侧极窄"索引条"+ 全宽正文，技术标签全部大写等宽
+   ══════════════════════════════════════════════════════════ */
+:root{
+  --canvas:#0b0b0b;
+  --surf-1:#212121;
+  --surf-2:#2a2a2a;
+  --surf-3:#353535;
+  --hair:#212121;
+  --hair-2:#353535;
+  --ink:#ffffff;
+  --silver:#b9b9b9;
+  --gray:#797979;
+  --charcoal:#212121;
+  --coral:#f36458;
+  --blue:#0052ef;
+  --blue-soft:#55beff;
+  --neon:#19d600;
+  --err:#dd0000;
+  --font:"Inter","waldenburgNormal",-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:#000;color:var(--ink);font-family:var(--font);font-size:13.5px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+.stage{padding:26px 18px 60px;display:flex;flex-direction:column;align-items:center;gap:16px}
+
+.notes{width:min(860px,100%);background:var(--surf-1);border:1px solid var(--hair-2);border-radius:6px;padding:14px 16px}
+.notes h2{margin:0 0 7px;font-size:13px;font-weight:600;letter-spacing:-.1px}
+.notes h2 span{color:var(--coral)}
+.notes ul{margin:0;padding-left:16px;color:var(--silver);font-size:11.5px;line-height:1.9}
+.notes ul b{color:var(--ink);font-weight:500}
+.notes code{font-family:var(--mono);font-size:10.5px;color:var(--blue-soft)}
+
+/* ══ 面板 ══ */
+.panel{width:min(860px,100%);background:var(--canvas);border:1px solid var(--hair-2);border-radius:8px;
+  display:grid;grid-template-columns:172px minmax(0,1fr);overflow:hidden}
+
+/* ── 左索引条 ── */
+.rail{
+  background:#000;border-right:1px solid var(--hair-2);
+  padding:18px 0 14px;display:flex;flex-direction:column;
+}
+.rail .brand{padding:0 16px 16px}
+.rail .brand .mk{
+  font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--coral);
+}
+.rail .brand .tx{margin-top:5px;font-size:13px;font-weight:600;letter-spacing:-.2px}
+.rail .brand .tx i{display:block;font-style:normal;font-family:var(--mono);font-size:9.5px;font-weight:400;
+  letter-spacing:.6px;color:var(--gray);margin-top:3px;text-transform:uppercase}
+
+.rail .cap{
+  font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;
+  color:var(--gray);padding:0 16px 8px;
+}
+.ri{
+  display:flex;align-items:baseline;gap:8px;
+  padding:8px 16px;border:none;background:transparent;border-left:2px solid transparent;
+  color:var(--silver);font-family:var(--font);font-size:12.5px;font-weight:400;
+  text-align:left;cursor:pointer;transition:color .1s ease,background .1s ease,border-color .1s ease;
+}
+.ri:hover{color:#fff;background:var(--surf-1)}
+.ri[data-active="1"]{color:#fff;font-weight:500;border-left-color:var(--coral);background:var(--surf-1)}
+.ri .n{font-family:var(--mono);font-size:9.5px;color:var(--gray);flex:none}
+.ri[data-active="1"] .n{color:var(--coral)}
+.ri .alert{margin-left:auto;width:5px;height:5px;background:var(--coral);flex:none;align-self:center}
+
+.rail .meta{
+  margin-top:auto;padding:14px 16px 0;border-top:1px solid var(--hair-2);
+  font-family:var(--mono);font-size:9.5px;line-height:1.8;color:var(--gray);letter-spacing:.3px;
+}
+.rail .meta b{color:var(--neon);font-weight:500}
+
+/* ── 右主区 ── */
+.main{display:flex;flex-direction:column;min-width:0}
+.mhead{padding:20px 24px 16px;border-bottom:1px solid var(--hair-2)}
+.mhead .kicker{
+  font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:1.4px;text-transform:uppercase;
+  color:var(--gray);margin-bottom:9px;display:flex;align-items:center;gap:7px;
+}
+.mhead .kicker em{font-style:normal;color:var(--coral)}
+.mhead h1{
+  margin:0;font-size:28px;font-weight:600;letter-spacing:-1.2px;line-height:1.1;
+}
+.mhead p{margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--silver);max-width:54ch}
+.mhead .acts{display:flex;gap:7px;margin-top:15px;align-items:center}
+
+.body{padding:18px 24px 24px;display:flex;flex-direction:column;gap:13px}
+.pane{display:none;flex-direction:column;gap:13px}
+.pane[data-active="1"]{display:flex}
+
+/* ══ 技术标签：大写等宽（Sanity 的"系统读数"气质）══ */
+.tech{
+  display:flex;align-items:center;gap:9px;
+  font-family:var(--mono);font-size:9.5px;font-weight:500;letter-spacing:1.3px;text-transform:uppercase;
+  color:var(--gray);
+}
+.tech::after{content:'';flex:1;height:1px;background:var(--hair-2)}
+
+/* ══ 卡片：3–6px 方角（对比 pill 按钮）══ */
+.card{background:var(--surf-1);border:1px solid var(--hair-2);border-radius:4px;padding:14px 16px}
+.card.bare{background:transparent;border-color:var(--hair-2)}
+.chead{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
+.chead .t{font-size:13.5px;font-weight:500;letter-spacing:-.1px;flex:none}
+.chead .fill{flex:1;min-width:0}
+.chead .hint{
+  font-family:var(--mono);font-size:9.5px;font-weight:400;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--gray);
+}
+.desc{margin-top:7px;font-size:11.5px;line-height:1.65;color:var(--silver)}
+
+/* ══ pills：3px 方角（技术感）══ */
+.pills{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pill{
+  padding:3px 9px;border-radius:3px;border:1px solid var(--hair-2);
+  background:transparent;color:var(--silver);
+  font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:.2px;cursor:pointer;
+  transition:background .1s ease,color .1s ease,border-color .1s ease;
+}
+.pill:hover{border-color:var(--gray);color:#fff}
+.pill[data-on="1"]{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:500}
+
+/* ══ 开关：方形滑轨（不用圆 pill，与按钮语言一致） ══ */
+.sw{position:relative;width:38px;height:20px;border-radius:3px;padding:0;flex:none;cursor:pointer;
+  border:1px solid var(--hair-2);background:var(--canvas);transition:background .14s ease,border-color .14s ease}
+.sw i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:1px;background:var(--gray);
+  transition:left .14s cubic-bezier(.4,0,.2,1),background .14s ease}
+.sw[data-on="1"]{background:rgba(0,82,239,.28);border-color:var(--blue)}
+.sw[data-on="1"] i{left:20px;background:var(--blue-soft)}
+.sw:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* ══ 按钮：主 CTA 是 pill（99999px），次要是 3px 方角 ══ */
+.btn{
+  padding:6px 13px;border-radius:3px;border:1px solid var(--hair-2);background:transparent;
+  color:#fff;font-family:var(--font);font-size:12.5px;font-weight:400;cursor:pointer;white-space:nowrap;
+  transition:background .1s ease,border-color .1s ease,color .1s ease;
+}
+.btn:hover{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary{
+  border-radius:99999px;background:var(--coral);border-color:var(--coral);
+  color:#fff;font-weight:500;padding:7px 17px;
+}
+.btn.primary:hover{background:var(--blue);border-color:var(--blue)}
+.btn.sm{padding:3px 9px;font-size:11px}
+.btn.ghost{border-color:transparent;color:var(--gray)}
+.btn.ghost:hover{background:var(--surf-2);border-color:transparent;color:#fff}
+.btn.danger{color:var(--coral);border-color:rgba(243,100,88,.36)}
+.btn.danger:hover{background:var(--coral);border-color:var(--coral);color:#fff}
+.icobtn{width:26px;height:26px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--hair-2);background:transparent;color:var(--silver);cursor:pointer;padding:0;flex:none;font-size:11px}
+.icobtn:hover{border-color:var(--blue);color:var(--blue-soft)}
+
+/* ══ 数字：极负字距是签名 ══ */
+.big{font-size:40px;font-weight:600;letter-spacing:-2.2px;line-height:1;color:#fff}
+.big em{font-style:normal;font-family:var(--mono);font-size:14px;font-weight:400;letter-spacing:.5px;color:var(--gray);margin-left:3px}
+.subrow{display:flex;align-items:center;gap:9px;margin-top:8px;font-size:12px;color:var(--silver);flex-wrap:wrap}
+.delta{
+  font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.3px;
+  padding:1px 6px;border-radius:2px;background:rgba(25,214,0,.14);color:var(--neon);
+}
+
+.stack{display:flex;height:8px;border-radius:2px;overflow:hidden;background:var(--surf-3);margin:15px 0 7px;gap:1px}
+.stack span{height:100%}
+.stacklbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;letter-spacing:.4px;color:var(--gray)}
+
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);margin-top:15px;padding-top:13px;border-top:1px solid var(--hair-2);gap:4px}
+.kpis>div{min-width:0}
+.kpis b{display:block;font-size:16px;font-weight:600;letter-spacing:-.5px}
+.kpis i{font-style:normal;font-family:var(--mono);font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--gray)}
+
+/* 图表 */
+.chart{display:flex;align-items:flex-end;gap:3px;height:92px;margin-top:12px}
+.bar{flex:1;align-self:stretch;height:100%;display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
+.bar .b{width:100%;background:var(--surf-3);min-height:2px;transition:background .12s}
+.bar:hover .b{background:var(--blue)}
+.bar .b.hot{background:var(--coral)}
+.chart-x{display:flex;gap:3px;margin-top:6px}
+.chart-x span{flex:1;min-width:0;text-align:center;font-family:var(--mono);font-size:9px;color:var(--gray)}
+
+/* 排行 */
+.rank{display:flex;flex-direction:column;margin-top:9px}
+.rrow{display:grid;grid-template-columns:22px minmax(0,1fr) 100px 64px;gap:9px;align-items:center;
+  padding:8px 0;border-bottom:1px solid var(--hair-2);font-size:12px}
+.rrow:last-child{border-bottom:none;padding-bottom:0}
+.rrow .idx{font-family:var(--mono);font-size:9.5px;color:var(--gray)}
+.rrow:nth-child(1) .idx{color:var(--coral)}
+.rrow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.rrow .tr{height:4px;background:var(--surf-3);overflow:hidden}
+.rrow .fl{display:block;height:100%;background:var(--gray)}
+.rrow:nth-child(1) .fl{background:var(--coral)}
+.rrow .v{text-align:right;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.2px}
+
+.spark{width:100%;height:36px;display:block;margin-top:8px}
+
+/* 行 */
+.rows{display:flex;flex-direction:column;margin-top:9px}
+.row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--hair-2);min-width:0}
+.row:last-child{border-bottom:none;padding-bottom:0}
+.row:first-child{padding-top:0}
+.row .time{flex:none;width:58px;font-family:var(--mono);font-size:10px;color:var(--gray);font-variant-numeric:tabular-nums}
+.row .model{flex:1;min-width:0;font-size:12px;color:var(--silver);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .model b{font-weight:500;color:#fff}
+.row .tok{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--gray);font-variant-numeric:tabular-nums}
+
+/* 徽标：全大写等宽方角 */
+.bdg{
+  display:inline-flex;align-items:center;gap:4px;padding:1px 5px;border-radius:2px;flex:none;
+  font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.7px;text-transform:uppercase;white-space:nowrap;
+  border:1px solid var(--hair-2);background:transparent;color:var(--silver);
+}
+.bdg.ok{color:var(--neon);border-color:rgba(25,214,0,.30);background:rgba(25,214,0,.10)}
+.bdg.warn{color:#f5a623;border-color:rgba(245,166,35,.30);background:rgba(245,166,35,.10)}
+.bdg.err{color:var(--coral);border-color:rgba(243,100,88,.32);background:rgba(243,100,88,.10)}
+.bdg.blue{color:var(--blue-soft);border-color:rgba(85,190,255,.32);background:rgba(0,82,239,.18)}
+.sdot{width:5px;height:5px;border-radius:1px;flex:none;background:var(--gray)}
+.sdot.ok{background:var(--neon)}
+
+/* 数据源 */
+.src{display:flex;align-items:center;gap:11px;padding:12px 0;border-bottom:1px solid var(--hair-2);min-width:0;flex-wrap:wrap}
+.src:last-child{border-bottom:none;padding-bottom:0}
+.src:first-child{padding-top:0}
+.src .ico{
+  flex:none;width:28px;height:28px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:9.5px;font-weight:500;color:#fff;letter-spacing:.3px;
+}
+.src .meta{flex:1;min-width:140px}
+.src .nm{font-size:13px;font-weight:500;display:flex;align-items:center;gap:7px}
+.src .sub2{font-family:var(--mono);font-size:10.5px;color:var(--gray);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.2px}
+.src .mask{flex:none;font-family:var(--mono);font-size:10px;color:var(--silver);
+  padding:2px 7px;border-radius:2px;border:1px solid var(--hair-2);background:#000}
+
+/* 表格 */
+.tbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:9px}
+.tbl th{
+  text-align:left;font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:1.1px;text-transform:uppercase;
+  color:var(--gray);padding:0 0 8px;border-bottom:1px solid var(--hair-2);
+}
+.tbl td{padding:8px 0;border-bottom:1px solid var(--hair-2);color:var(--silver)}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl td.n,.tbl th.n{text-align:right;font-variant-numeric:tabular-nums}
+.tbl tfoot td{padding-top:9px;border-top:1px solid var(--gray);border-bottom:none;color:#fff;font-weight:500}
+
+.inp{width:84px;padding:6px 10px;border-radius:3px;border:1px solid var(--hair-2);
+  background:#000;color:#fff;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+.inp:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 2px rgba(0,82,239,.28)}
+.unit{font-family:var(--mono);font-size:10.5px;color:var(--gray);letter-spacing:.4px}
+
+.foot{font-family:var(--mono);font-size:9.5px;line-height:1.9;color:var(--gray);letter-spacing:.3px;padding:0 2px}
+.notice{
+  display:flex;gap:8px;font-size:11px;line-height:1.6;color:#f5a623;
+  padding:9px 11px;border-radius:3px;background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.22);
+}
+
+.stylerow{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:10px;align-items:center;padding:4px 0}
+.stylerow .nm{font-size:11.5px;color:var(--silver)}
+.stylerow .dsc{font-family:var(--mono);font-size:9.5px;color:var(--gray);text-align:right;letter-spacing:.3px}
+
+/* 读数条（Sanity 的 system readout） */
+.readout{
+  display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--hair-2);border-radius:4px;overflow:hidden;
+}
+.readout>div{
+  flex:1 1 0;min-width:104px;padding:10px 12px;border-right:1px solid var(--hair-2);
+}
+.readout>div:last-child{border-right:none}
+.readout .k{font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--gray)}
+.readout .v{font-size:16px;font-weight:600;letter-spacing:-.5px;margin-top:3px}
+
+@media (max-width:800px){
+  .panel{grid-template-columns:1fr}
+  .rail{border-right:none;border-bottom:1px solid var(--hair-2);flex-direction:row;flex-wrap:wrap;padding:12px 0}
+  .rail .brand{width:100%;padding:0 14px 10px}
+  .rail .cap,.rail .meta{display:none}
+  .ri{flex:1 1 auto;justify-content:center;padding:7px 10px;border-left:none;border-bottom:2px solid transparent;font-size:11.5px}
+  .ri[data-active="1"]{border-left-color:transparent;border-bottom-color:var(--coral)}
+  .ri .n{display:none}
+  .mhead{padding:16px 16px 14px}
+  .mhead h1{font-size:22px;letter-spacing:-.8px}
+  .body{padding:14px 16px 20px}
+  .kpis{grid-template-columns:repeat(2,1fr);gap:10px 4px}
+  .rrow{grid-template-columns:18px minmax(0,1fr) 68px 54px}
+  .big{font-size:31px;letter-spacing:-1.5px}
+  .stylerow{grid-template-columns:52px minmax(0,1fr)}
+  .stylerow .dsc{display:none}
+}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="notes">
+    <h2>方案 I · <span>Sanity</span> — nocturnal console</h2>
+    <ul>
+      <li><b>方向</b>：近黑 #0b0b0b 是「自然状态」而非暗色模式；纯灰阶无冷暖倾向，克制到极点</li>
+      <li><b>电压</b>：珊瑚红 #f36458 只给主 CTA；电蓝 #0052ef 是全站 hover/激活信号；霓虹绿只做成功</li>
+      <li><b>字</b>：极负字距是签名（40px 数字 → −2.2px）；技术标签全部<b>大写等宽</b> IBM Plex</li>
+      <li><b>形</b>：主按钮是 pill，其余全 3px 方角 —— 这种<b>强烈对比</b>才是它的识别点</li>
+      <li><b>结构</b>：左侧 172px 极窄索引条（2px 珊瑚左边线 + 编号），右侧全宽读数区</li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <!-- 左索引条 -->
+    <div class="rail">
+      <div class="brand">
+        <div class="mk">Token / Meter</div>
+        <div class="tx">用量与额度<i>Dsh Quota Widget</i></div>
+      </div>
+
+      <div class="cap">Index</div>
+      <button class="ri" data-nav="usage" data-active="1"><span class="n">01</span>用量统计</button>
+      <button class="ri" data-nav="query"><span class="n">02</span>用量查询</button>
+      <button class="ri" data-nav="conf"><span class="n">03</span>外观</button>
+      <button class="ri" data-nav="data"><span class="n">04</span>数据源</button>
+      <button class="ri" data-nav="gen"><span class="n">05</span>通用</button>
+      <button class="ri" data-nav="maint"><span class="n">06</span>维护</button>
+      <button class="ri" data-nav="gateway"><span class="n">07</span>网关<span class="alert"></span></button>
+
+      <div class="meta">
+        <div>STORE <b>SQLITE</b></div>
+        <div>RANGE 90D</div>
+        <div>v0.1.2</div>
+      </div>
+    </div>
+
+    <!-- 右主区 -->
+    <div class="main">
+      <div class="mhead">
+        <div class="kicker"><em id="mkicker">01</em> / 07 · <span id="mcrumb">用量统计</span></div>
+        <h1 id="mtitle">Token 消耗的固定看板</h1>
+        <p id="msub">范围、图表、排行与实时指标。所有数字按本机时区聚合；网关部分按 UTC+8 日界换算后并入。</p>
+        <div class="acts">
+          <button class="btn primary">导出 CSV</button>
+          <button class="btn">复制摘要</button>
+          <button class="icobtn" title="刷新">⟳</button>
+        </div>
+      </div>
+
+      <div class="body">
+
+        <!-- 1 用量统计 -->
+        <div class="pane" data-pane="usage" data-active="1">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="pills">
+              <button class="pill">今日</button><button class="pill">7D</button>
+              <button class="pill" data-on="1">30D</button><button class="pill">90D</button>
+              <button class="pill">全部</button><button class="pill">自定义</button>
+            </div>
+            <span style="flex:1"></span>
+            <div class="pills">
+              <button class="pill" data-on="1">柱状</button><button class="pill">折线</button>
+              <button class="pill">热力</button><button class="pill">时段</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">总览</span><span class="hint">30D · 6 天有数据</span></div>
+            <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-top:14px">
+              <div style="flex:1;min-width:150px">
+                <div class="big num">739.5<em>M</em></div>
+                <div class="subrow">
+                  <span>日均 123.2M</span>
+                  <span class="delta">↑ 12.4%</span>
+                </div>
+              </div>
+              <div style="flex:none;display:flex;align-items:center;gap:9px">
+                <svg width="46" height="46" viewBox="0 0 46 46" aria-label="命中率 96.3%">
+                  <circle cx="23" cy="23" r="18.5" fill="none" stroke="#353535" stroke-width="3"></circle>
+                  <circle cx="23" cy="23" r="18.5" fill="none" stroke="#f36458" stroke-width="3"
+                          stroke-dasharray="112 117" transform="rotate(-90 23 23)"></circle>
+                </svg>
+                <div>
+                  <div class="num mono" style="font-size:14px;font-weight:500;letter-spacing:-.3px">96.3%</div>
+                  <div class="mono" style="font-size:9px;letter-spacing:.8px;color:var(--gray);text-transform:uppercase">Hit Rate</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stack">
+              <span style="width:3.6%;background:var(--coral)"></span>
+              <span style="width:96.3%;background:#5c5c5c"></span>
+              <span style="width:0.4%;background:var(--neon)"></span>
+            </div>
+            <div class="stacklbl">
+              <span style="color:var(--coral)">IN 3.6%</span>
+              <span>CACHE 96.3%</span>
+              <span style="color:var(--neon)">OUT 0.4%</span>
+            </div>
+
+            <div class="readout" style="margin-top:16px;border:none;border-top:1px solid var(--hair-2);border-radius:0;padding-top:0">
+              <div><div class="k">Replies</div><div class="v num">3,241</div></div>
+              <div><div class="k">Turns</div><div class="v num">173</div></div>
+              <div><div class="k">Steps</div><div class="v num">3,256</div></div>
+              <div><div class="k">Tools</div><div class="v num">4,182</div></div>
+            </div>
+          </div>
+
+          <div class="tech">按日趋势 · 峰值 48.2M · 10-12</div>
+          <div class="card bare">
+            <div class="chart" id="chi"></div>
+            <div class="chart-x" id="chi-x"></div>
+          </div>
+
+          <div class="tech">模型排行 · 点击一行只看该模型</div>
+          <div class="card">
+            <div class="rank">
+              <div class="rrow"><span class="idx">01</span><span class="nm">u2-flash</span>
+                <span class="tr"><span class="fl" style="width:100%"></span></span><span class="v num">357.7M</span></div>
+              <div class="rrow"><span class="idx">02</span><span class="nm">step-5-preview</span>
+                <span class="tr"><span class="fl" style="width:51%"></span></span><span class="v num">182.6M</span></div>
+              <div class="rrow"><span class="idx">03</span><span class="nm">deepseek-flash</span>
+                <span class="tr"><span class="fl" style="width:11%"></span></span><span class="v num">39.6M</span></div>
+              <div class="rrow"><span class="idx">04</span><span class="nm">deepseek-v4.1</span>
+                <span class="tr"><span class="fl" style="width:10%"></span></span><span class="v num">34.0M</span></div>
+              <div class="rrow"><span class="idx">05</span><span class="nm">qwen3-coder</span>
+                <span class="tr"><span class="fl" style="width:5%"></span></span><span class="v num">18.2M</span></div>
+            </div>
+          </div>
+
+          <div class="tech">实时 · 近 60 秒</div>
+          <div class="card">
+            <div style="display:flex;align-items:baseline;gap:7px">
+              <span class="num" style="font-size:26px;font-weight:600;letter-spacing:-1.2px;color:var(--neon)">1.4</span>
+              <span class="mono" style="font-size:10px;color:var(--gray);letter-spacing:.6px">TOK/S</span>
+              <span class="bdg ok" style="margin-left:auto"><span class="sdot ok"></span>Live</span>
+            </div>
+            <svg class="spark" viewBox="0 0 300 36" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points="0,28 15,30 30,26 45,24 60,27 75,22 90,18 105,23 120,20 135,14 150,17 165,11 180,15 195,19 210,13 225,16 240,10 255,14 270,18 285,12 300,16"
+                fill="none" stroke="#19d600" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"></polyline>
+            </svg>
+            <div class="readout" style="margin-top:11px;border:none;border-top:1px solid var(--hair-2);border-radius:0">
+              <div><div class="k">P50 Step</div><div class="v num" style="font-size:14px">4.1s</div></div>
+              <div><div class="k">Tools</div><div class="v num" style="font-size:14px">4,182</div></div>
+              <div><div class="k">Turns</div><div class="v num" style="font-size:14px">173</div></div>
+              <div><div class="k">Steps</div><div class="v num" style="font-size:14px">3,256</div></div>
+              <div><div class="k">Retries</div><div class="v num" style="font-size:14px">5</div></div>
+            </div>
+          </div>
+
+          <div class="tech">最近调用 · 最近 5 条</div>
+          <div class="card">
+            <div class="rows" style="margin-top:0">
+              <div class="row"><span class="time">10:42:31</span><span class="model"><b>u2-flash</b> · harmonycast</span><span class="tok">12.3K → 1.2K</span></div>
+              <div class="row"><span class="time">10:40:07</span><span class="model"><b>deepseek-v4.1</b> · zenith</span><span class="tok">4.1K → 320</span></div>
+              <div class="row"><span class="time">10:38:55</span><span class="model"><b>u2-flash</b> · —</span><span class="tok">980 → 64</span></div>
+              <div class="row"><span class="time">10:37:12</span><span class="model"><b>step-5-preview</b> · gateway</span><span class="tok">8.7K → 2.4K</span></div>
+              <div class="row"><span class="time">10:35:44</span><span class="model"><b>deepseek-flash</b> · zenith</span><span class="tok">2.2K → 410</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 用量查询 -->
+        <div class="pane" data-pane="query">
+          <div class="tech">查询条件</div>
+          <div class="card">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span class="mono" style="font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--gray);width:56px;flex:none">Range</span>
+                <div class="pills">
+                  <button class="pill">今日</button><button class="pill">7D</button>
+                  <button class="pill" data-on="1">30D</button><button class="pill">90D</button>
+                  <button class="pill">全部</button><button class="pill">自定义</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span class="mono" style="font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--gray);width:56px;flex:none">Group</span>
+                <div class="pills">
+                  <button class="pill" data-on="1">模型</button><button class="pill">项目</button>
+                  <button class="pill">会话</button><button class="pill">工具</button><button class="pill">渠道</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span class="mono" style="font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--gray);width:56px;flex:none">Source</span>
+                <div class="pills">
+                  <button class="pill" data-on="1">本机 + 网关</button><button class="pill">仅本机</button><button class="pill">仅网关</button>
+                </div>
+                <span style="flex:1"></span>
+                <button class="btn primary">运行查询</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tech">查询结果 · 模型 × 渠道 · 432 行</div>
+          <div class="card">
+            <table class="tbl">
+              <thead><tr><th>模型</th><th>渠道</th><th class="n">总量</th><th class="n">请求</th><th class="n">占比</th></tr></thead>
+              <tbody>
+                <tr><td style="color:#fff;font-weight:500">u2-flash</td><td class="mono" style="font-size:10.5px;color:var(--gray)">直连</td><td class="n">357.7M</td><td class="n">1,506</td><td class="n">48.4%</td></tr>
+                <tr><td style="color:#fff;font-weight:500">u2-flash</td><td class="mono" style="font-size:10.5px;color:var(--gray)">网关</td><td class="n">98.2M</td><td class="n">412</td><td class="n">13.3%</td></tr>
+                <tr><td style="color:#fff;font-weight:500">step-5-preview</td><td class="mono" style="font-size:10.5px;color:var(--gray)">直连</td><td class="n">182.6M</td><td class="n">821</td><td class="n">24.7%</td></tr>
+                <tr><td style="color:#fff;font-weight:500">deepseek-flash</td><td class="mono" style="font-size:10.5px;color:var(--gray)">直连</td><td class="n">39.6M</td><td class="n">169</td><td class="n">5.4%</td></tr>
+                <tr><td style="color:#fff;font-weight:500">deepseek-v4.1</td><td class="mono" style="font-size:10.5px;color:var(--gray)">网关</td><td class="n">34.0M</td><td class="n">88</td><td class="n">4.6%</td></tr>
+              </tbody>
+              <tfoot><tr><td colspan="2">合计</td><td class="n">712.1M</td><td class="n">2,996</td><td class="n">96.4%</td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- 3 外观 -->
+        <div class="pane" data-pane="conf">
+          <div class="tech">悬浮窗外观 · 只影响小窗口</div>
+
+          <div class="card">
+            <div class="chead"><span class="t">小窗口</span><span class="fill"></span><button class="sw" data-on="1"><i></i></button></div>
+            <div class="desc">悬浮于侧边的额度轮播挂件 · 单源展示，右键或滑动切换 Opencode｜DeepSeek｜R4Coder｜TokenMeter</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">贴边收起</span><span class="fill"></span><button class="sw" data-on="1"><i></i></button></div>
+            <div class="desc">再往边缘拽一下收成把手条，鼠标移上自动展开、点击可固定。仅存本机。</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">面板材质</span><span class="fill"></span>
+              <div class="pills">
+                <button class="pill" data-on="1">经典</button><button class="pill">玻璃</button>
+                <button class="pill">亚克力</button><button class="pill">纸</button>
+              </div>
+            </div>
+            <div class="desc">液态玻璃跟随指针高光；亚克力景深最强但更耗 GPU；哑光纸不透明、零模糊。</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">悬浮窗模板</span><span class="fill"></span>
+              <div class="pills"><button class="pill" data-on="1">经典版</button><button class="pill">紧凑版</button></div>
+            </div>
+            <div class="desc">小窗口 TokenMeter 轮播页的排版模板</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">小窗口图表</span><span class="fill"></span>
+              <div class="pills"><button class="pill" data-on="1">柱状</button><button class="pill">热力图</button></div>
+            </div>
+            <div class="desc">柱状 = 近 7 日趋势；热力图 = 当月日历。与「用量统计」页的图表选择互不影响。</div>
+          </div>
+        </div>
+
+        <!-- 4 数据源 -->
+        <div class="pane" data-pane="data">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="tech" style="flex:1;margin:0">数据源 · 凭证与连通性</div>
+            <button class="icobtn" title="原始响应">{}</button>
+            <button class="btn sm">全部测试</button>
+          </div>
+
+          <div class="card">
+            <div class="src">
+              <span class="ico" style="background:linear-gradient(135deg,#f36458,#a83a30)">OC</span>
+              <span class="meta">
+                <span class="nm">Opencode <span class="bdg blue">GO</span></span>
+                <span class="sub2">18/25 · 3d 4h</span>
+              </span>
+              <span class="bdg ok"><span class="sdot ok"></span>OK</span>
+              <span class="mask">opc…9f2a</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+            <div class="src">
+              <span class="ico" style="background:linear-gradient(135deg,#0052ef,#003a9e)">DS</span>
+              <span class="meta">
+                <span class="nm">DeepSeek</span>
+                <span class="sub2">¥ 42.80 · 可用</span>
+              </span>
+              <span class="bdg ok"><span class="sdot ok"></span>OK</span>
+              <span class="mask">sk-…4c81</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+            <div class="src">
+              <span class="ico" style="background:linear-gradient(135deg,#f5a623,#a06a10)">R4</span>
+              <span class="meta">
+                <span class="nm">R4Coder</span>
+                <span class="sub2">api.r4.codes · 套餐剩 62%</span>
+              </span>
+              <span class="bdg warn"><span class="sdot"></span>PENDING</span>
+              <span class="mask">cod…7d10</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+          </div>
+
+          <div class="foot">Token 只走请求头 · 不写入 URL / 日志 / 数据库 · HOST 端不持久化凭据</div>
+        </div>
+
+        <!-- 5 通用 -->
+        <div class="pane" data-pane="gen">
+          <div class="tech">通用</div>
+
+          <div class="card">
+            <div class="chead"><span class="t">自动刷新</span><span class="fill"></span>
+              <div style="display:flex;align-items:center;gap:8px"><input class="inp" value="120"><span class="unit">SEC</span></div>
+            </div>
+            <div class="desc">额度数据的自动拉取周期（30–3600 秒）</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">侧栏入口</span><span class="fill"></span><button class="sw" data-on="1"><i></i></button></div>
+            <div class="desc">在左侧栏显示「用量与额度」入口。关闭不影响悬浮小窗和这里的设置页。需要 DSH v0.2.1+。</div>
+          </div>
+
+          <div class="tech">用量统计外观 · 只存本机</div>
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span class="mono" style="font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--gray)">预设</span>
+              <div class="pills">
+                <button class="pill" data-on="1">轻卡片</button><button class="pill">专业监控</button><button class="pill">极简一行</button>
+              </div>
+            </div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:3px">
+              <div class="stylerow"><span class="nm">总览</span>
+                <span class="pills"><button class="pill" data-on="1">A</button><button class="pill">B</button><button class="pill">C</button></span>
+                <span class="dsc">DASHBOARD</span></div>
+              <div class="stylerow"><span class="nm">图表</span>
+                <span class="pills"><button class="pill" data-on="1">A</button><button class="pill">B</button><button class="pill">C</button></span>
+                <span class="dsc">AXIS</span></div>
+              <div class="stylerow"><span class="nm">排行</span>
+                <span class="pills"><button class="pill">A</button><button class="pill">B</button><button class="pill" data-on="1">C</button></span>
+                <span class="dsc">TWO-LINE</span></div>
+              <div class="stylerow"><span class="nm">实时</span>
+                <span class="pills"><button class="pill">A</button><button class="pill" data-on="1">B</button><button class="pill">C</button></span>
+                <span class="dsc">SPARKLINE</span></div>
+              <div class="stylerow"><span class="nm">最近调用</span>
+                <span class="pills"><button class="pill" data-on="1">A</button><button class="pill">B</button><button class="pill">C</button></span>
+                <span class="dsc">TIMELINE</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6 维护 -->
+        <div class="pane" data-pane="maint">
+          <div class="tech">账本维护 · 修复数据</div>
+
+          <div class="card">
+            <div class="rows" style="margin-top:0">
+              <div class="row"><span class="model"><b>补录缺失会话</b></span>
+                <span class="mono" style="font-size:10px;color:var(--gray);flex:none">3 JOBS · +1.2M</span>
+                <button class="btn sm">补录</button></div>
+              <div class="row"><span class="model"><b>补齐历史维度</b></span>
+                <span class="mono" style="font-size:10px;color:var(--gray);flex:none">412 ROWS</span>
+                <button class="btn sm">回填</button></div>
+            </div>
+          </div>
+
+          <div class="tech" style="color:var(--coral)">危险区 · 不可逆</div>
+          <div class="card" style="border-color:rgba(243,100,88,.30);background:rgba(243,100,88,.05)">
+            <div class="rows" style="margin-top:0">
+              <div class="row" style="border-bottom:none;padding:0"><span class="model"><b style="color:var(--coral)">清空用量账本</b></span>
+                <span class="mono" style="font-size:10px;color:rgba(243,100,88,.72);flex:none">SNAPSHOT FIRST</span>
+                <button class="btn danger sm">清空</button></div>
+            </div>
+          </div>
+
+          <div class="tech">重置</div>
+          <div class="card">
+            <div class="chead"><span class="t">恢复默认</span><span class="fill"></span>
+              <div style="display:flex;gap:6px">
+                <button class="btn danger sm">重置配置</button>
+                <button class="btn danger sm">重置位置</button>
+              </div>
+            </div>
+            <div class="desc">把配置还原默认 / 让悬浮窗回到默认停靠点。清空、补齐、补录账本见上方「账本维护」。</div>
+          </div>
+        </div>
+
+        <!-- 7 网关 -->
+        <div class="pane" data-pane="gateway">
+          <div class="tech">网关监测 · 只读对方账本</div>
+
+          <div class="card">
+            <div class="chead">
+              <span class="t">dsh-providers-hub</span><span class="fill"></span>
+              <span class="bdg ok"><span class="sdot ok"></span>v1</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+            <div class="desc">读取对方落盘的 token-ledger.json，只取 channel=gateway 的日聚合。不写入对方任何文件，不调用对方接口。</div>
+
+            <div class="readout" style="margin-top:15px">
+              <div><div class="k">Gateway</div><div class="v num" style="color:var(--coral)">48.2M</div></div>
+              <div><div class="k">Requests</div><div class="v num">412</div></div>
+              <div><div class="k">Share</div><div class="v num">52.1%</div></div>
+              <div><div class="k">Models</div><div class="v num">4</div></div>
+            </div>
+
+            <div style="margin-top:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <div class="pills">
+                <button class="pill" data-on="1">今日</button><button class="pill">7D</button><button class="pill">30D</button>
+              </div>
+              <span style="flex:1"></span>
+              <span class="mono" style="font-size:9px;letter-spacing:.8px;color:var(--gray);text-transform:uppercase">UTC+8 · ANON</span>
+            </div>
+          </div>
+
+          <div class="tech">渠道 / 模型 · 4 条</div>
+          <div class="card">
+            <div class="rows" style="margin-top:0">
+              <div class="row"><span class="model"><b>openai</b> · u2-flash</span><span class="tok">28.4M · 58%</span></div>
+              <div class="row"><span class="model"><b>openai</b> · step-5-preview</span><span class="tok">12.1M · 25%</span></div>
+              <div class="row"><span class="model"><b>anthropic</b> · deepseek-v4.1</span><span class="tok">5.6M · 12%</span></div>
+              <div class="row"><span class="model"><b>openai</b> · deepseek-flash</span><span class="tok">2.1M · 5%</span></div>
+            </div>
+          </div>
+
+          <div class="notice"><span>⚠</span><span>网关只有「日 × 渠道 × 账号 × 模型」聚合，没有项目 / 会话 / 工具 / 24 小时分布。</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var META={
+  usage:["01","用量统计","Token 消耗的固定看板","范围、图表、排行与实时指标。所有数字按本机时区聚合；网关部分按 UTC+8 日界换算后并入。"],
+  query:["02","用量查询","自选交叉组合","临时看一下某个维度组合。项目 / 会话 / 工具只有本机会话才有，网关不建会话。"],
+  conf:["03","外观","悬浮小窗的形态","形态、材质、模板与图表。全部只存本机，不改额度配置，也不影响统计数据。"],
+  data:["04","数据源","各家额度来源","只管凭证与连通性。Token 只走请求头，Host 端不持久化，转发后即丢弃。"],
+  gen:["05","通用","刷新与入口","自动刷新周期、左侧栏入口，以及用量统计页的 A/B/C 外观偏好。"],
+  maint:["06","维护","账本修复与重置","修复类操作安全可重复；清空不可逆，会先写一份完整快照再执行。"],
+  gateway:["07","网关","dsh-providers-hub 对照","只读对方落盘的账本，只取 channel=gateway 的日聚合，不写入任何文件。"]
+};
+document.querySelectorAll('.ri').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var k=btn.dataset.nav;
+    document.querySelectorAll('.ri').forEach(function(b){ b.dataset.active = b.dataset.nav===k?'1':'0'; });
+    document.querySelectorAll('.pane').forEach(function(p){ p.dataset.active = p.dataset.pane===k?'1':'0'; });
+    var m=META[k];
+    if(m){
+      document.getElementById('mkicker').textContent=m[0];
+      document.getElementById('mcrumb').textContent=m[1];
+      document.getElementById('mtitle').textContent=m[2];
+      document.getElementById('msub').textContent=m[3];
+    }
+  });
+});
+document.addEventListener('click',function(e){
+  var p=e.target.closest('.pill');
+  if(p){ var g=p.parentElement; if(g&&g.classList.contains('pills')){
+    g.querySelectorAll('.pill').forEach(function(x){ x.removeAttribute('data-on'); }); p.setAttribute('data-on','1'); }}
+  var s=e.target.closest('.sw');
+  if(s){ s.dataset.on = s.dataset.on==='1'?'0':'1'; }
+});
+(function(){
+  var vals=[22,31,18,44,52,38,26,61,72,48,33,55,68,41,29,37,58,76,64,42,35,51,67,88,73,49,39,56,62,45];
+  var c=document.getElementById('chi'), x=document.getElementById('chi-x'), max=Math.max.apply(null,vals);
+  vals.forEach(function(v,i){
+    var d=document.createElement('div'); d.className='bar';
+    var b=document.createElement('span'); b.className='b'+(v===max?' hot':'');
+    b.style.height=Math.max(3,Math.round(v/max*100))+'%'; d.appendChild(b); c.appendChild(d);
+  });
+  for(var i=0;i<30;i+=5){ var s=document.createElement('span'); s.textContent=('0'+(i+1)).slice(-2); x.appendChild(s); }
+})();
+</script>
+</body>
+</html>

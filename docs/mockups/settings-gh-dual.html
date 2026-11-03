@@ -1,0 +1,1520 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>G+H · Claude 暖色 + Notion 结构 — 双极性模版</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   G+H · Claude 的暖色气质 × Notion 的 hero/图标网格布局
+   ─────────────────────────────────────────────────────────────────────
+   ⚠️ 修正记录（2026-10-30）
+   早先版本错误地把 `prefers-color-scheme` 当成主判据，理由是源码注释
+   「宿主没有给 data-theme 钩子」。这个判断是错的：
+   **宿主的确不给 data-theme，但它给的是"已经算好明暗的变量值"。**
+   看悬浮面板 `.oq-card` 就清楚 —— 它只写
+       background: var(--dsw-alias-bg-layer-2, #1a1a1f)
+   换主题时 DSH 重新计算该变量的值（深色 #1a1a1f / 浅色 #ffffff），
+   插件一行代码都不用改。prefers-color-scheme 只在插件**自己写死颜色**
+   的地方（热力色阶、玻璃材质）当兜底用，不是主题机制本身。
+
+   因此本版改为三层架构：
+     层 1 宿主注入   --dsw-alias-* 由 DSH 赋值，随主题变
+     层 2 插件映射   --oq-* = 宿主变量的语义别名，不定义具体色值
+     层 3 组件       只用 --oq-*
+
+   品牌色（珊瑚）是唯一宿主没有的，用 color-mix 与 label-primary 混合：
+     浅色主题 label 深 → 珊瑚被压深；深色主题 label 浅 → 珊瑚被提亮。
+     同一个表达式自动换向，不需要媒体查询。
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════════════
+   架构：三层（这是本轮修正的核心）
+   ──────────────────────────────────────────────────────────────────────
+   层 1 · 宿主注入     --dsw-alias-* 的**值由 DSH 主题决定**。
+                       DSH 切深浅色时，宿主重新计算这些变量的值，
+                       插件一行代码都不用改。悬浮面板 .oq-card 就是这么
+                       跟随主题的（它只写 var(--dsw-alias-bg-layer-2)）。
+                       真实环境里这一层由 DSH 注入；此处复刻一份用于预览。
+   层 2 · 插件映射     --oq-* 只做「语义别名 → 宿主变量」的翻译，
+                       **不定义任何具体色值**。结构色 100% 继承宿主。
+   层 3 · 组件         只用 --oq-*，不直接碰 --dsw-*，也不写浅色覆盖。
+
+   唯一例外是品牌色（珊瑚）：宿主没有这个色。用 color-mix 与宿主的
+   label-primary 混合 —— 浅色主题下 label 是深色，珊瑚被压深；深色
+   主题下 label 是浅色，珊瑚被提亮。同一个表达式自动换向，无需媒体查询。
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ══════ 层 1：宿主注入 ══════
+   ⚠️ 顺序与特异性都有讲究，写错会让"强制切换"失效：
+      :root                              (0,1,0) 默认深色 —— 必须最前
+      @media light { :root }             (0,1,0) 系统浅色 —— 靠源码顺序覆盖默认
+      html[data-dsw=…] / [data-dsw=…]    (0,1,1)/(0,1,0) 强制覆盖 —— 必须最后
+   早先版本把 [data-dsw="dark"] 写在媒体查询**前面**，两者特异性相同，
+   媒体查询靠顺序胜出，导致"切到深色没反应"。这是实测发现的。 */
+
+/* 1 · 默认深色（与插件现状一致：插件默认外观就是深色） */
+:root{
+  --dsw-alias-bg-layer-2:#1a1a1f;
+  --dsw-alias-bg-layer-1:#242433;
+  --dsw-alias-border-l1:rgba(255,255,255,0.08);
+  --dsw-alias-border-l2:rgba(255,255,255,0.14);
+  --dsw-alias-label-primary:#ffffff;
+  --dsw-alias-label-secondary:#a0a0b0;
+  --dsw-alias-label-caption:#9a9aaa;
+  --dsw-alias-interactive-bg-hover:rgba(255,255,255,0.06);
+  --dsw-alias-state-business-primary:#8b7bff;
+  --dsw-alias-state-success-primary:#34d399;
+  --dsw-shadow-lv3:0 10px 30px rgba(0,0,0,0.35);
+  --dsw-radius-sm:8px;
+}
+
+/* 2 · DSH 切浅色：这里没有任何插件代码参与，只是变量值变了 */
+@media (prefers-color-scheme: light){
+  :root{
+    --dsw-alias-bg-layer-2:#ffffff;
+    --dsw-alias-bg-layer-1:#f6f5f4;
+    --dsw-alias-border-l1:rgba(0,0,0,0.10);
+    --dsw-alias-border-l2:rgba(0,0,0,0.16);
+    --dsw-alias-label-primary:#1a1a1a;
+    --dsw-alias-label-secondary:#5f5f68;
+    --dsw-alias-label-caption:#8a8a94;
+    --dsw-alias-interactive-bg-hover:rgba(0,0,0,0.05);
+    --dsw-alias-state-business-primary:#6d5bff;
+    --dsw-alias-state-success-primary:#10b981;
+    --dsw-shadow-lv3:0 10px 30px rgba(13,37,61,0.14);
+  }
+}
+
+/* 3 · 强制覆盖（仅预览用）。
+   html[data-dsw] 特异性 (0,1,1) 高于 :root 的 (0,1,0)，能压住上面两者；
+   单独的 [data-dsw] 分支给「并排对照」的两个面板用 —— 属性挂在元素自身，
+   天然覆盖从 :root 继承来的值，不需要特异性竞争。 */
+html[data-dsw="dark"],
+[data-dsw="dark"]{
+  --dsw-alias-bg-layer-2:#1a1a1f;
+  --dsw-alias-bg-layer-1:#242433;
+  --dsw-alias-border-l1:rgba(255,255,255,0.08);
+  --dsw-alias-border-l2:rgba(255,255,255,0.14);
+  --dsw-alias-label-primary:#ffffff;
+  --dsw-alias-label-secondary:#a0a0b0;
+  --dsw-alias-label-caption:#9a9aaa;
+  --dsw-alias-interactive-bg-hover:rgba(255,255,255,0.06);
+  --dsw-alias-state-business-primary:#8b7bff;
+  --dsw-alias-state-success-primary:#34d399;
+  --dsw-shadow-lv3:0 10px 30px rgba(0,0,0,0.35);
+}
+
+html[data-dsw="light"],
+[data-dsw="light"]{
+  --dsw-alias-bg-layer-2:#ffffff;
+  --dsw-alias-bg-layer-1:#f6f5f4;
+  --dsw-alias-border-l1:rgba(0,0,0,0.10);
+  --dsw-alias-border-l2:rgba(0,0,0,0.16);
+  --dsw-alias-label-primary:#1a1a1a;
+  --dsw-alias-label-secondary:#5f5f68;
+  --dsw-alias-label-caption:#8a8a94;
+  --dsw-alias-interactive-bg-hover:rgba(0,0,0,0.05);
+  --dsw-alias-state-business-primary:#6d5bff;
+  --dsw-alias-state-success-primary:#10b981;
+  --dsw-shadow-lv3:0 10px 30px rgba(13,37,61,0.14);
+}
+
+/* ══════ 层 2：插件映射（唯一需要维护的代码） ══════
+   ⚠️ 选择器必须同时命中 `:root` 和 `[data-dsw]`，不能只写 :root。
+   原因：自定义属性里的 var() 在**声明处**求值，结果作为普通继承值下传。
+   若只写在 :root，`--oq-canvas` 会用 :root 的 --dsw-* 算完再传下去，
+   子元素即使覆盖了 --dsw-* 也改不动它（并排对照右侧面板不变深就是这个坑）。
+   加上 [data-dsw] 后，这类元素会用自己的 --dsw-* 重新算一遍。 */
+:root,
+[data-dsw]{
+  /* ── 结构色：继承宿主 + 掺入 Claude 的暖调 ──
+     纯用宿主变量会得到"纯白 / 纯灰"，G 的暖奶油质感会丢失。
+     所以给宿主背景掺 5–7% 的暖奶油：浅色下是"暖白"，
+     深色下是"暖黑"，两端都保留 Claude 的温度，且仍然跟随主题。 */
+  --oq-canvas:        color-mix(in oklab, var(--dsw-alias-bg-layer-2) 94%, #f5e9d4 6%);
+  --oq-surface:       color-mix(in oklab, var(--dsw-alias-bg-layer-1) 92%, #efe4d0 8%);
+  --oq-hairline:      color-mix(in oklab, var(--dsw-alias-border-l1) 88%, #cc785c 12%);
+  --oq-hairline-strong:var(--dsw-alias-border-l2);
+  --oq-ink:           var(--dsw-alias-label-primary);
+  --oq-muted:         var(--dsw-alias-label-secondary);
+  /* ⚠️ caption 直接当文字用，浅色下只有 3.39（实测），低于 AA。
+     与 label-primary 混合：浅色下被压深、深色下被提亮，两端都受益。 */
+  --oq-faint:         color-mix(in oklab, var(--dsw-alias-label-caption) 76%, var(--dsw-alias-label-primary) 24%);
+
+  /* ── 派生色：从宿主变量算，不引入新色相 ── */
+  --oq-body:          color-mix(in oklab, var(--dsw-alias-label-primary) 88%, var(--dsw-alias-bg-layer-2) 12%);
+  --oq-surface-2:     color-mix(in oklab, var(--dsw-alias-bg-layer-1) 90%, var(--dsw-alias-label-primary) 10%);
+  --oq-surface-3:     color-mix(in oklab, var(--dsw-alias-bg-layer-1) 80%, var(--dsw-alias-label-primary) 20%);
+  --oq-hairline-soft: color-mix(in oklab, var(--dsw-alias-border-l1) 66%, transparent);
+  --oq-track:         color-mix(in oklab, var(--dsw-alias-bg-layer-1) 82%, var(--dsw-alias-label-primary) 18%);
+  --oq-bar:           color-mix(in oklab, #cc785c 30%, color-mix(in oklab, var(--dsw-alias-bg-layer-1) 72%, var(--dsw-alias-label-primary) 28%) 70%);
+
+  /* ── 品牌色：宿主没有，用 color-mix 让它自己换向 ──
+     浅色：label 深 → 珊瑚压深（配白字，对比达标）
+     深色：label 浅 → 珊瑚提亮（配深字，对比达标） */
+  --oq-accent:        #cc785c;
+  --oq-accent:        color-mix(in oklab, #cc785c 74%, var(--dsw-alias-label-primary) 26%);
+  --oq-accent-hover:  color-mix(in oklab, #cc785c 62%, var(--dsw-alias-label-primary) 38%);
+  /* 珊瑚块上的文字 = 宿主背景色：浅色下自然是白字，深色下自然是深字 */
+  --oq-accent-ink:    var(--dsw-alias-bg-layer-2);
+  --oq-accent-text:   #a9583e;
+  --oq-accent-text:   color-mix(in oklab, #cc785c 70%, var(--dsw-alias-label-primary) 30%);
+  --oq-accent-soft:   color-mix(in oklab, #cc785c 14%, var(--dsw-alias-bg-layer-2) 86%);
+  --oq-accent-line:   color-mix(in oklab, #cc785c 38%, var(--dsw-alias-bg-layer-2) 62%);
+
+  /* ── 状态色：宿主只给了 success，其余同法派生 ──
+     ⚠️ 宿主的 success（#10b981）适合做"点/条"，直接当文字只有 2.51。
+     与 label-primary 混合后才够 4.5+；warn 同理。 */
+  --oq-success:       color-mix(in oklab, var(--dsw-alias-state-success-primary) 66%, var(--dsw-alias-label-primary) 34%);
+  --oq-success-bg:    color-mix(in oklab, var(--dsw-alias-state-success-primary) 13%, var(--dsw-alias-bg-layer-2) 87%);
+  --oq-success-line:  color-mix(in oklab, var(--dsw-alias-state-success-primary) 32%, var(--dsw-alias-bg-layer-2) 68%);
+  --oq-warn:          color-mix(in oklab, #d4a017 58%, var(--dsw-alias-label-primary) 42%);
+  --oq-warn-bg:       color-mix(in oklab, #d4a017 12%, var(--dsw-alias-bg-layer-2) 88%);
+  --oq-warn-line:     color-mix(in oklab, #d4a017 30%, var(--dsw-alias-bg-layer-2) 70%);
+  --oq-danger:        color-mix(in oklab, #c64545 66%, var(--dsw-alias-label-primary) 34%);
+  --oq-danger-bg:     color-mix(in oklab, #c64545 10%, var(--dsw-alias-bg-layer-2) 90%);
+  --oq-danger-line:   color-mix(in oklab, #c64545 30%, var(--dsw-alias-bg-layer-2) 70%);
+
+  /* ── hero 带：品牌深色块，两种极性下都保持深色（结构重音，不随主题翻转）──
+     因为底色恒为深色，它内部的文字/描边用固定值即可，不需要跟宿主变量，
+     也不需要媒体查询 —— 这条边界在两种极性下都成立。 */
+  --oq-hero-bg:       #181715;
+  --oq-hero-ink:      #faf9f5;
+  --oq-hero-muted:    #a09d96;
+  --oq-hero-hairline: rgba(255,255,255,0.12);
+
+  /* ── tab 网格：全页最亮层，代表"浮在最上面" ── */
+  --oq-grid-bg:       color-mix(in oklab, var(--dsw-alias-bg-layer-2) 96%, var(--dsw-alias-label-primary) 4%);
+
+  --oq-shadow:        var(--dsw-shadow-lv3);
+  --oq-shadow-pop:    0 8px 24px -12px rgba(0,0,0,.28);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{
+  background:var(--oq-canvas);
+  color:var(--oq-ink);
+  font-family:"Inter",-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  font-size:13.5px;line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  transition:background .25s ease, color .25s ease;
+}
+.num{font-variant-numeric:tabular-nums}
+.serif{font-family:"Source Serif 4","Copernicus",Georgia,"Songti SC",serif}
+
+.stage{
+  padding:22px 18px 60px;min-height:100%;
+  display:flex;flex-direction:column;align-items:center;gap:16px;
+  background:
+    radial-gradient(120% 90% at 50% -10%, var(--oq-surface) 0%, transparent 62%),
+    var(--oq-canvas);
+}
+
+/* ── 说明卡 ── */
+.notes{
+  width:min(880px,100%);background:var(--oq-surface);
+  border:1px solid var(--oq-hairline);border-radius:12px;padding:14px 16px;
+}
+.notes h2{
+  margin:0 0 7px;font-family:"Source Serif 4",Georgia,serif;
+  font-size:14.5px;font-weight:500;letter-spacing:-.1px;color:var(--oq-ink);
+}
+.notes h2 em{font-style:normal;color:var(--oq-accent-text)}
+.notes ul{margin:0;padding-left:16px;color:var(--oq-muted);font-size:11.5px;line-height:1.9}
+.notes ul b{color:var(--oq-body);font-weight:500}
+.notes code{
+  font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;font-size:10.5px;
+  background:var(--oq-surface-3);color:var(--oq-accent-text);padding:1px 4px;border-radius:3px;
+}
+
+/* ── 极性切换器（本模版专用） ── */
+.switchbar{
+  width:min(880px,100%);display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:9px 12px;border-radius:10px;
+  background:var(--oq-surface);border:1px solid var(--oq-hairline);
+}
+.switchbar .lab{
+  font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--oq-faint);
+  margin-right:2px;
+}
+.segbtn{
+  padding:5px 12px;border-radius:7px;border:1px solid var(--oq-hairline-strong);
+  background:transparent;color:var(--oq-muted);
+  font-family:inherit;font-size:11.5px;font-weight:500;cursor:pointer;
+  transition:background .14s,color .14s,border-color .14s;
+}
+.segbtn:hover{color:var(--oq-ink);border-color:var(--oq-muted)}
+.segbtn[data-on="1"]{background:var(--oq-ink);border-color:var(--oq-ink);color:var(--oq-canvas)}
+.switchbar .hint{margin-left:auto;font-size:10.5px;color:var(--oq-faint)}
+
+/* ── 并排对照容器（横屏足够宽时用） ── */
+.compare{width:min(880px,100%);display:grid;grid-template-columns:1fr;gap:16px}
+.compare[data-mode="split"]{grid-template-columns:repeat(2,minmax(0,1fr));max-width:1560px;width:100%}
+.compare[data-mode="split"] .panel{font-size:12px}
+.compare[data-mode="split"] .panel h1{font-size:20px}
+/* ⚠️ 并排时每个面板仅约 480px，7 个图标网格会挤成两三行、结构失真。
+   这里改为**横向滚动单行**（不换行），既保住 H 的"一排等分图标"语义，
+   又不压缩文字。真实落地时设置页宿主 ≥640px，不会走到这个分支。 */
+.compare[data-mode="split"] .tabgrid{
+  margin:-38px 10px 0;gap:3px;padding:4px;
+  flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
+}
+.compare[data-mode="split"] .tabgrid::-webkit-scrollbar{display:none}
+.compare[data-mode="split"] .tg{
+  font-size:9px;padding:6px 3px 5px;min-width:56px;flex:1 0 auto;
+}
+.compare[data-mode="split"] .tg svg{width:12px;height:12px}
+.compare[data-mode="split"] .body{padding:14px 14px 18px}
+/* KPI 保持 4 列：2 列会变成 3+1 的不均衡排布，反而更难比较 */
+.compare[data-mode="split"] .kpis{grid-template-columns:repeat(4,1fr);gap:6px 2px}
+.compare[data-mode="split"] .kpis b{font-size:15px}
+.compare[data-mode="split"] .kpis i{font-size:9px}
+.compare[data-mode="split"] .rrow{grid-template-columns:16px minmax(0,1fr) 56px 48px;font-size:10.5px}
+.compare[data-mode="split"] .big{font-size:26px}
+.compare[data-mode="split"] .notes{display:none}
+.compare[data-mode="split"] .switchbar{display:none}
+.compare[data-mode="split"] .panehead{display:block}
+
+/* 对照模式下的极性标记 */
+.themebadge{
+  display:none;align-items:center;gap:5px;
+  font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  font-size:9px;letter-spacing:.8px;text-transform:uppercase;
+  padding:2px 7px;border-radius:4px;
+  background:var(--oq-accent-soft);color:var(--oq-accent-text);border:1px solid var(--oq-accent-line);
+}
+.compare[data-mode="split"] .themebadge{display:inline-flex}
+
+/* ══ 面板 ══ */
+.panel{
+  width:100%;background:var(--oq-canvas);
+  border:1px solid var(--oq-hairline);border-radius:14px;
+  overflow:hidden;box-shadow:var(--oq-shadow);
+  transition:background .25s ease,border-color .25s ease;
+}
+
+/* ── hero 带（H 的结构核心：始终深色，提供"重音块"） ── */
+.hero{
+  position:relative;overflow:hidden;
+  background:var(--oq-hero-bg);
+  color:var(--oq-hero-ink);
+  padding:22px 26px 62px;
+}
+.hero .dots{position:absolute;inset:0;pointer-events:none;opacity:.5;z-index:0}
+.hero .dots i{position:absolute;border-radius:50%;display:block}
+.hero .row{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+  position:relative;z-index:2;
+}
+.hero .wk{display:flex;align-items:center;gap:9px;margin-bottom:11px}
+.hero .wk .mk{
+  width:25px;height:25px;border-radius:7px;flex:none;
+  background:var(--oq-accent);color:var(--oq-accent-ink);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-family:"Source Serif 4",Georgia,serif;font-size:13px;font-weight:500;
+}
+.hero .wk .tx{
+  font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--oq-hero-muted);
+}
+.hero h1{
+  margin:0;font-family:"Source Serif 4","Copernicus",Georgia,"Songti SC",serif;
+  font-size:26px;font-weight:400;letter-spacing:-.5px;line-height:1.2;color:var(--oq-hero-ink);
+}
+.hero p{
+  margin:7px 0 0;font-size:12.5px;line-height:1.55;color:var(--oq-hero-muted);
+}
+.hero .acts{flex:none;display:flex;align-items:center;gap:7px}
+
+/* ── 图标网格 tab：浮在 hero 下缘（H 的签名结构） ── */
+.tabgrid{
+  position:relative;z-index:3;
+  display:flex;flex-wrap:wrap;gap:5px;
+  margin:-44px 20px 0;
+  /* 网格是全页最亮层：浅色下纯白，暗色下比 hero 与 canvas 都亮 */
+  background:var(--oq-grid-bg);
+  border:1px solid var(--oq-hairline);
+  border-radius:12px;padding:6px;
+  box-shadow:var(--oq-shadow-pop);
+  transition:background .25s ease,border-color .25s ease;
+}
+/* hero 在暗色下比 canvas 深，靠这条内描边界定"这条带从哪开始" */
+.hero{border-bottom:1px solid var(--oq-hero-hairline)}
+.tg{
+  flex:1 1 0;min-width:70px;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:8px 5px 7px;border-radius:9px;border:1px solid transparent;
+  background:transparent;color:var(--oq-faint);
+  font-family:inherit;font-size:10.5px;font-weight:500;cursor:pointer;
+  transition:background .14s,color .14s,border-color .14s;
+  position:relative;
+}
+.tg svg{opacity:.72;transition:opacity .14s}
+.tg:hover{background:var(--oq-surface-2);color:var(--oq-body)}
+.tg:hover svg{opacity:1}
+.tg[data-active="1"]{
+  background:var(--oq-accent-soft);
+  border-color:var(--oq-accent-line);
+  color:var(--oq-accent-text);font-weight:600;
+}
+.tg[data-active="1"] svg{opacity:1}
+.tg .alert{
+  position:absolute;top:6px;right:8px;
+  width:5px;height:5px;border-radius:50%;background:var(--oq-accent);
+}
+
+/* ── 内容区 ── */
+.body{padding:18px 22px 24px;background:var(--oq-canvas);transition:background .25s ease}
+.pane{display:none;flex-direction:column;gap:13px}
+.pane[data-active="1"]{display:flex}
+.panehead{display:none;margin:0 0 2px;font-size:11px;color:var(--oq-faint)}
+
+/* ── 卡片（G 的暖纸块，改走变量） ── */
+.card{
+  background:var(--oq-surface);
+  border:1px solid var(--oq-hairline);
+  border-radius:10px;padding:15px 17px;
+  transition:background .25s ease,border-color .25s ease;
+}
+.card.flat{background:transparent}
+.card.deep{background:var(--oq-surface-2)}
+.chead{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
+.chead .t{font-size:13.5px;font-weight:500;letter-spacing:-.1px;flex:none;color:var(--oq-ink)}
+.chead .fill{flex:1;min-width:0}
+.chead .hint{font-size:11.5px;color:var(--oq-muted)}
+.desc{margin-top:6px;font-size:11.5px;line-height:1.65;color:var(--oq-muted)}
+
+/* 章节标题：衬线 + 细线（G 的编辑气质） */
+.h2{display:flex;align-items:baseline;gap:10px;margin:4px 0 0}
+.h2 span{
+  font-family:"Source Serif 4","Copernicus",Georgia,serif;
+  font-size:17px;font-weight:400;letter-spacing:-.2px;color:var(--oq-ink);
+}
+.h2 em{font-style:normal;font-size:11px;color:var(--oq-faint);font-family:inherit}
+.h2::after{content:'';flex:1;height:1px;background:var(--oq-hairline);transform:translateY(-4px)}
+
+/* ── pills（G 的 8px 非 pill 形） ── */
+.pills{display:inline-flex;align-items:center;gap:5px;flex-wrap:wrap}
+.pill{
+  padding:4px 11px;border-radius:8px;border:1px solid var(--oq-hairline);
+  background:var(--oq-canvas);color:var(--oq-muted);
+  font-family:inherit;font-size:11.5px;font-weight:400;cursor:pointer;
+  transition:background .14s,color .14s,border-color .14s;
+}
+.pill:hover{border-color:var(--oq-hairline-strong);color:var(--oq-body)}
+.pill[data-on="1"]{
+  background:var(--oq-ink);border-color:var(--oq-ink);color:var(--oq-canvas);font-weight:500;
+}
+
+/* ── 开关（珊瑚） ── */
+.sw{
+  position:relative;width:38px;height:22px;border-radius:999px;padding:0;flex:none;cursor:pointer;
+  border:none;background:var(--oq-surface-3);transition:background .18s ease;
+}
+.sw i{
+  position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+  background:var(--oq-canvas);box-shadow:0 1px 2px rgba(0,0,0,.22);
+  transition:left .18s cubic-bezier(.4,0,.2,1),background .18s ease;
+}
+.sw[data-on="1"]{background:var(--oq-accent)}
+.sw[data-on="1"] i{left:18px;background:var(--oq-accent-ink)}
+.sw:focus-visible{outline:2px solid var(--oq-accent);outline-offset:2px}
+
+/* ── 按钮（8px 圆角，非 pill） ── */
+.btn{
+  padding:6px 13px;border-radius:8px;border:1px solid var(--oq-hairline-strong);
+  background:transparent;color:var(--oq-ink);
+  font-family:inherit;font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;
+  transition:background .14s,border-color .14s,color .14s;
+}
+.btn:hover{background:var(--oq-surface-2)}
+.btn.primary{background:var(--oq-accent);border-color:var(--oq-accent);color:var(--oq-accent-ink)}
+.btn.primary:hover{background:var(--oq-accent-hover);border-color:var(--oq-accent-hover)}
+.btn.sm{padding:3px 9px;font-size:11px}
+.btn.ghost{border-color:transparent;color:var(--oq-muted)}
+.btn.ghost:hover{background:var(--oq-surface-2);color:var(--oq-ink)}
+.btn.danger{color:var(--oq-danger);border-color:var(--oq-danger-line)}
+.btn.danger:hover{background:var(--oq-danger-bg)}
+/* hero 内按钮 */
+.hero .btn{border-color:var(--oq-hero-hairline);color:var(--oq-hero-ink)}
+.hero .btn:hover{background:rgba(255,255,255,.08)}
+.hero .btn.primary{background:var(--oq-accent);border-color:var(--oq-accent);color:var(--oq-accent-ink)}
+.hero .btn.primary:hover{background:var(--oq-accent-hover)}
+.icobtn{
+  width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--oq-hairline);background:transparent;color:var(--oq-muted);
+  cursor:pointer;padding:0;flex:none;font-size:12px;transition:border-color .14s,color .14s;
+}
+.icobtn:hover{border-color:var(--oq-hairline-strong);color:var(--oq-ink)}
+
+/* ── 数字（衬线大字是 G 的顶点） ── */
+.big{
+  font-family:"Source Serif 4","Copernicus",Georgia,serif;
+  font-size:38px;font-weight:400;letter-spacing:-1.4px;line-height:1.05;color:var(--oq-ink);
+}
+.big em{
+  font-style:normal;font-family:inherit;font-size:15px;font-weight:400;
+  color:var(--oq-faint);margin-left:3px;
+}
+.subrow{display:flex;align-items:center;gap:9px;margin-top:8px;font-size:12px;color:var(--oq-muted);flex-wrap:wrap}
+.delta{
+  display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:5px;
+  background:var(--oq-success-bg);border:1px solid var(--oq-success-line);
+  color:var(--oq-success);font-size:11px;font-weight:500;
+}
+
+/* 三段构成带 */
+.stack{
+  display:flex;height:10px;border-radius:5px;overflow:hidden;
+  background:var(--oq-surface-3);margin:16px 0 7px;gap:1px;
+}
+.stack span{height:100%}
+.stacklbl{display:flex;justify-content:space-between;font-size:10.5px;color:var(--oq-muted)}
+
+.kpis{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  margin-top:16px;padding-top:14px;border-top:1px solid var(--oq-hairline);gap:4px;
+}
+.kpis>div{min-width:0}
+.kpis b{
+  display:block;font-family:"Source Serif 4",Georgia,serif;
+  font-size:19px;font-weight:400;letter-spacing:-.5px;color:var(--oq-ink);
+}
+.kpis i{font-style:normal;font-size:10.5px;color:var(--oq-muted)}
+
+/* ── 图表 ── */
+.chart{display:flex;align-items:flex-end;gap:4px;height:92px;margin-top:12px}
+.bar{flex:1;align-self:stretch;height:100%;display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
+.bar .b{
+  width:100%;border-radius:2px 2px 0 0;background:var(--oq-bar);
+  min-height:2px;transition:background .16s;
+}
+.bar:hover .b{background:var(--oq-accent)}
+.bar .b.hot{background:var(--oq-accent)}
+.chart-x{display:flex;gap:4px;margin-top:6px}
+.chart-x span{
+  flex:1;min-width:0;text-align:center;
+  font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  font-size:9.5px;color:var(--oq-faint);
+}
+
+/* ── 排行 ── */
+.rank{display:flex;flex-direction:column;margin-top:10px}
+.rrow{
+  display:grid;grid-template-columns:22px minmax(0,1fr) 100px 62px;gap:9px;align-items:center;
+  padding:8px 0;border-bottom:1px solid var(--oq-hairline-soft);font-size:12px;
+}
+.rrow:last-child{border-bottom:none;padding-bottom:0}
+.rrow .idx{
+  font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  font-size:10px;color:var(--oq-faint);
+}
+.rrow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--oq-body)}
+.rrow .tr{height:5px;border-radius:3px;background:var(--oq-track);overflow:hidden}
+.rrow .fl{display:block;height:100%;border-radius:3px;background:var(--oq-accent)}
+.rrow:nth-child(n+3) .fl{opacity:.62}
+.rrow .v{
+  text-align:right;font-family:"Source Serif 4",Georgia,serif;
+  font-size:13px;font-variant-numeric:tabular-nums;color:var(--oq-ink);
+}
+
+/* ── 实时 ── */
+.spark{width:100%;height:38px;display:block;margin-top:8px}
+.livetop{display:flex;align-items:baseline;gap:7px}
+.livetop .v{
+  font-family:"Source Serif 4",Georgia,serif;font-size:26px;letter-spacing:-.8px;color:var(--oq-ink);
+}
+.livetop .u{font-size:11px;color:var(--oq-muted)}
+
+/* ── 行列表 ── */
+.rows{display:flex;flex-direction:column;margin-top:10px}
+.row{
+  display:flex;align-items:center;gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--oq-hairline-soft);min-width:0;
+}
+.row:last-child{border-bottom:none;padding-bottom:0}
+.row:first-child{padding-top:0}
+.row .time{
+  flex:none;width:56px;font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  font-size:10.5px;color:var(--oq-faint);font-variant-numeric:tabular-nums;
+}
+.row .model{flex:1;min-width:0;font-size:12px;color:var(--oq-body);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .model b{font-weight:500;color:var(--oq-ink)}
+.row .tok{flex:none;font-size:11px;color:var(--oq-muted);font-variant-numeric:tabular-nums}
+
+/* ── 徽标 ── */
+.bdg{
+  display:inline-flex;align-items:center;gap:5px;padding:1px 7px;border-radius:5px;flex:none;
+  font-size:10px;font-weight:500;white-space:nowrap;
+  border:1px solid var(--oq-hairline);background:var(--oq-surface-2);color:var(--oq-muted);
+}
+.bdg.acc{background:var(--oq-accent-soft);border-color:var(--oq-accent-line);color:var(--oq-accent-text)}
+.bdg.ok{background:var(--oq-success-bg);border-color:var(--oq-success-line);color:var(--oq-success)}
+.bdg.warn{background:var(--oq-warn-bg);border-color:var(--oq-warn-line);color:var(--oq-warn)}
+.bdg.err{background:var(--oq-danger-bg);border-color:var(--oq-danger-line);color:var(--oq-danger)}
+.sdot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--oq-faint)}
+.sdot.ok{background:var(--oq-success)}
+.sdot.warn{background:var(--oq-warn)}
+
+/* ── 数据源 ── */
+.src{
+  display:flex;align-items:center;gap:11px;padding:12px 0;
+  border-bottom:1px solid var(--oq-hairline-soft);min-width:0;flex-wrap:wrap;
+}
+.src:last-child{border-bottom:none;padding-bottom:0}
+.src:first-child{padding-top:0}
+.src .ico{
+  flex:none;width:30px;height:30px;border-radius:8px;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:500;color:#fff;
+}
+.src .meta{flex:1;min-width:140px}
+.src .nm{font-size:13px;font-weight:500;display:flex;align-items:center;gap:7px;color:var(--oq-ink)}
+.src .sub2{font-size:11.5px;color:var(--oq-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src .mask{
+  flex:none;font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  font-size:10.5px;color:var(--oq-muted);padding:2px 8px;border-radius:5px;
+  border:1px solid var(--oq-hairline);background:var(--oq-canvas);
+}
+
+/* ── 表格 ── */
+.tbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+.tbl th{
+  text-align:left;font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  font-size:9.5px;font-weight:500;letter-spacing:.8px;text-transform:uppercase;
+  color:var(--oq-faint);padding:0 0 9px;border-bottom:1px solid var(--oq-hairline);
+}
+.tbl td{padding:9px 0;border-bottom:1px solid var(--oq-hairline-soft);color:var(--oq-body)}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl td.n,.tbl th.n{text-align:right;font-variant-numeric:tabular-nums}
+.tbl tfoot td{
+  padding-top:10px;border-top:1px solid var(--oq-hairline-strong);
+  border-bottom:none;color:var(--oq-ink);font-weight:500;
+}
+
+/* ── 输入 ── */
+.inp{
+  width:86px;padding:7px 11px;border-radius:8px;border:1px solid var(--oq-hairline-strong);
+  background:var(--oq-canvas);color:var(--oq-ink);font-family:inherit;font-size:12.5px;
+  font-variant-numeric:tabular-nums;
+}
+.inp:focus{outline:none;border-color:var(--oq-accent);box-shadow:0 0 0 3px var(--oq-accent-soft)}
+.unit{font-size:11.5px;color:var(--oq-faint)}
+
+/* ── 脚注 / 提示 ── */
+.foot{font-size:11px;line-height:1.7;color:var(--oq-faint);padding:0 2px}
+.notice{
+  display:flex;gap:8px;font-size:11px;line-height:1.6;
+  color:var(--oq-warn);padding:9px 11px;border-radius:8px;
+  background:var(--oq-warn-bg);border:1px solid var(--oq-warn-line);
+}
+.stylerow{
+  display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:10px;
+  align-items:center;padding:4px 0;
+}
+.stylerow .nm{font-size:11.5px;color:var(--oq-body)}
+.stylerow .dsc{font-size:10.5px;color:var(--oq-faint);text-align:right}
+.seclab{
+  font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  font-size:9.5px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--oq-faint);
+}
+
+/* 引文（G 的编辑感） */
+.pull{
+  border-left:2px solid var(--oq-accent);padding:2px 0 2px 12px;
+  font-family:"Source Serif 4",Georgia,serif;font-size:12.5px;font-style:italic;
+  line-height:1.65;color:var(--oq-body);
+}
+
+@media (max-width:780px){
+  .compare[data-mode="split"]{grid-template-columns:1fr}
+  .hero{padding:18px 18px 58px}
+  .hero h1{font-size:22px}
+  .hero .row{flex-direction:column;gap:12px}
+  .tabgrid{margin:-40px 12px 0;gap:3px;padding:4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .tabgrid::-webkit-scrollbar{display:none}
+  /* ⚠️ 这里不能用百分比 basis（flex:1 1 28%）：700px 下 7 项会被挤成 3+3+1，
+     而 640–720px 正是设置页的真实宿主宽度。用 flex:1 1 0 + min-width:0
+     让七项严格等分单行，靠缩字号与去图标保证不溢出。 */
+  .tg{min-width:0;flex:1 1 0;font-size:9.5px;padding:6px 2px 5px;gap:3px}
+  .body{padding:14px 16px 20px}
+  .kpis{grid-template-columns:repeat(4,1fr);gap:8px 2px}
+  .kpis b{font-size:16px}
+  .kpis i{font-size:9.5px}
+  .rrow{grid-template-columns:18px minmax(0,1fr) 68px 52px}
+  .big{font-size:30px}
+  .stylerow{grid-template-columns:52px minmax(0,1fr)}
+  .stylerow .dsc{display:none}
+}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="notes">
+    <h2>G+H · <em>Claude 暖色</em> × <em>Notion 结构</em> — 三层架构版</h2>
+    <ul>
+      <li><b>配色 / 结构</b>：G 的暖奶油 + 珊瑚；H 的 hero 带 + 图标网格 tab 浮层</li>
+      <li><b>主题跟随方式已修正</b>：不是靠 <code>prefers-color-scheme</code>，而是<b>直接引用宿主变量</b>。
+        结构色全部 = <code>--dsw-alias-bg-layer-1/2</code>、<code>label-primary/secondary/caption</code>、
+        <code>border-l1/l2</code> —— 与悬浮面板 <code>.oq-card</code> 同一套机制，DSH 换主题时自动跟</li>
+      <li><b>品牌色自动换向</b>：珊瑚用 <code>color-mix</code> 与 <code>label-primary</code> 混合。
+        浅色下 label 深 → 珊瑚压深；深色下 label 浅 → 珊瑚提亮。一个表达式两种结果</li>
+      <li><b>插件侧零浅色代码</b>：没有任何 <code>@media (prefers-color-scheme)</code> 的组件覆盖，
+        唯一的媒体查询用来给"模拟宿主"赋不同值</li>
+      <li><b>关键决定</b>：hero 带在两种极性下<b>都保持深色</b> —— 它是结构重音，不随主题翻转</li>
+    </ul>
+  </div>
+
+  <div class="switchbar">
+    <span class="lab">Host theme</span>
+    <button class="segbtn" data-pol="auto" data-on="1">跟随系统</button>
+    <button class="segbtn" data-pol="light">宿主浅色</button>
+    <button class="segbtn" data-pol="dark">宿主深色</button>
+    <button class="segbtn" data-pol="split">并排对照</button>
+    <span class="hint">切换的是 <code style="font-family:monospace">--dsw-alias-*</code>，插件样式不变</span>
+  </div>
+
+  <div class="compare" id="compare">
+
+    <!-- ══════════ 面板 1（跟随系统 / 强制时唯一可见） ══════════ -->
+    <div class="panel" id="panelMain">
+      <div class="hero">
+        <div class="dots" aria-hidden="true">
+          <i style="right:8%;top:20%;width:8px;height:8px;background:#cc785c"></i>
+          <i style="right:22%;bottom:24%;width:6px;height:6px;background:#e8a55a"></i>
+          <i style="right:34%;top:26%;width:5px;height:5px;background:#5db8a6"></i>
+        </div>
+        <div class="row">
+          <div>
+            <div class="wk">
+              <span class="mk">用</span>
+              <span class="tx">Dsh Quota Widget</span>
+              <span class="themebadge" id="badge1">DARK</span>
+            </div>
+            <h1>用量与额度</h1>
+            <p>Token 用量统计 · Opencode / DeepSeek / R4Coder 额度。数据全部留在本机。</p>
+          </div>
+          <div class="acts">
+            <button class="btn">悬浮窗显示中</button>
+            <button class="btn primary">导出 CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabgrid" data-grid="1">
+        <button class="tg" data-tab="usage" data-active="1">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 12V7M6 12V4M10 12V9M14 12V2"/></svg>
+          用量统计
+        </button>
+        <button class="tg" data-tab="query">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+          用量查询
+        </button>
+        <button class="tg" data-tab="conf">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2.6" width="12" height="10.8" rx="2"/><path d="M2 6h12"/></svg>
+          外观
+        </button>
+        <button class="tg" data-tab="data">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><ellipse cx="8" cy="4" rx="5.4" ry="2.2"/><path d="M2.6 4v8c0 1.2 2.4 2.2 5.4 2.2s5.4-1 5.4-2.2V4"/></svg>
+          数据源
+        </button>
+        <button class="tg" data-tab="gen">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.7v1.7M8 12.6v1.7M1.7 8h1.7M12.6 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2"/></svg>
+          通用
+        </button>
+        <button class="tg" data-tab="maint">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.4 2.2a3.6 3.6 0 004.4 4.7l-8 8a2.2 2.2 0 01-3.1-3.1z"/></svg>
+          维护
+        </button>
+        <button class="tg" data-tab="gateway">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 5.6h12M2 10.4h12"/><circle cx="5.4" cy="5.6" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.6" cy="10.4" r="1.2" fill="currentColor" stroke="none"/></svg>
+          网关
+          <span class="alert"></span>
+        </button>
+      </div>
+
+      <div class="body">
+        <div class="panehead" id="panehead1">以下为「用量统计」页内容</div>
+
+        <!-- 1 用量统计 -->
+        <div class="pane" data-pane="usage" data-active="1">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="pills">
+              <button class="pill">今日</button><button class="pill">7 天</button>
+              <button class="pill" data-on="1">30 天</button><button class="pill">90 天</button>
+              <button class="pill">全部</button><button class="pill">自定义</button>
+            </div>
+            <span style="flex:1"></span>
+            <div class="pills">
+              <button class="pill" data-on="1">柱状</button><button class="pill">折线</button>
+              <button class="pill">热力</button><button class="pill">时段</button>
+            </div>
+          </div>
+
+          <div class="card flat">
+            <div class="chead"><span class="t">总览</span><span class="hint">近 30 天 · 6 天有数据</span></div>
+            <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-top:14px">
+              <div style="flex:1;min-width:150px">
+                <div class="big num">739.5<em>M</em></div>
+                <div class="subrow">
+                  <span>日均 123.2M</span>
+                  <span class="delta">↑ 12.4%</span>
+                </div>
+              </div>
+              <div style="flex:none;display:flex;align-items:center;gap:10px">
+                <svg width="48" height="48" viewBox="0 0 48 48" aria-label="缓存命中率 96.3%">
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="var(--oq-track)" stroke-width="3.5"></circle>
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="var(--oq-accent)" stroke-width="3.5"
+                          stroke-linecap="round" stroke-dasharray="118 126" transform="rotate(-90 24 24)"></circle>
+                </svg>
+                <div>
+                  <div class="num serif" style="font-size:16px;color:var(--oq-ink)">96.3%</div>
+                  <div style="font-size:10.5px;color:var(--oq-muted)">缓存命中率</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stack">
+              <span style="width:3.6%;background:var(--oq-accent)"></span>
+              <span style="width:96.3%;background:var(--oq-accent);opacity:.38"></span>
+              <span style="width:0.4%;background:var(--oq-success)"></span>
+            </div>
+            <div class="stacklbl">
+              <span style="color:var(--oq-accent-text)">新输入 3.6%</span>
+              <span>缓存读 96.3%</span>
+              <span style="color:var(--oq-success)">输出 0.4%</span>
+            </div>
+
+            <div class="kpis">
+              <div><b class="num">3,241</b><i>回复</i></div>
+              <div><b class="num">173</b><i>轮次</i></div>
+              <div><b class="num">3,256</b><i>步数</i></div>
+              <div><b class="num">4,182</b><i>工具调用</i></div>
+            </div>
+          </div>
+
+          <div class="h2"><span>按日趋势</span><em>峰值 48.2M · 10-12</em></div>
+          <div class="card">
+            <div class="chart" data-chart="1"></div>
+            <div class="chart-x" data-chartx="1"></div>
+          </div>
+
+          <div class="h2"><span>模型排行</span><em>点击一行可只看该模型</em></div>
+          <div class="card">
+            <div class="rank">
+              <div class="rrow"><span class="idx">01</span><span class="nm">u2-flash</span>
+                <span class="tr"><span class="fl" style="width:100%"></span></span><span class="v num">357.7M</span></div>
+              <div class="rrow"><span class="idx">02</span><span class="nm">step-5-preview</span>
+                <span class="tr"><span class="fl" style="width:51%"></span></span><span class="v num">182.6M</span></div>
+              <div class="rrow"><span class="idx">03</span><span class="nm">deepseek-flash</span>
+                <span class="tr"><span class="fl" style="width:11%"></span></span><span class="v num">39.6M</span></div>
+              <div class="rrow"><span class="idx">04</span><span class="nm">deepseek-v4.1</span>
+                <span class="tr"><span class="fl" style="width:10%"></span></span><span class="v num">34.0M</span></div>
+              <div class="rrow"><span class="idx">05</span><span class="nm">qwen3-coder</span>
+                <span class="tr"><span class="fl" style="width:5%"></span></span><span class="v num">18.2M</span></div>
+            </div>
+            <div class="pull" style="margin-top:13px">u2-flash 单模型吃掉 48% 用量。换它的价格档，比继续优化缓存命中更有效。</div>
+          </div>
+
+          <div class="h2"><span>实时</span><em>近 60 秒</em></div>
+          <div class="card">
+            <div style="display:flex;align-items:baseline;gap:7px">
+              <span class="v num" style="font-family:'Source Serif 4',Georgia,serif;font-size:26px;letter-spacing:-.8px;color:var(--oq-ink)">1.4</span>
+              <span style="font-size:11px;color:var(--oq-muted)">tok/s</span>
+              <span class="bdg ok" style="margin-left:auto"><span class="sdot ok"></span>活跃</span>
+            </div>
+            <svg class="spark" viewBox="0 0 300 38" preserveAspectRatio="none" aria-hidden="true">
+              <polyline points="0,30 15,32 30,28 45,26 60,29 75,24 90,20 105,25 120,22 135,16 150,19 165,13 180,17 195,21 210,15 225,18 240,12 255,16 270,20 285,14 300,18"
+                fill="none" stroke="var(--oq-accent)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"></polyline>
+            </svg>
+            <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+              <div><b class="num" style="font-size:15px">4.1s</b><i>每步 P50</i></div>
+              <div><b class="num" style="font-size:15px">4,182</b><i>工具</i></div>
+              <div><b class="num" style="font-size:15px">173</b><i>轮次</i></div>
+              <div><b class="num" style="font-size:15px">3,256</b><i>步数</i></div>
+              <div><b class="num" style="font-size:15px">5</b><i>重试</i></div>
+            </div>
+          </div>
+
+          <div class="h2"><span>最近调用</span><em>最近 5 条</em></div>
+          <div class="card">
+            <div class="rows" style="margin-top:0">
+              <div class="row"><span class="time">10:42:31</span><span class="model"><b>u2-flash</b> · harmonycast</span><span class="tok">12.3K → 1.2K</span></div>
+              <div class="row"><span class="time">10:40:07</span><span class="model"><b>deepseek-v4.1</b> · zenith</span><span class="tok">4.1K → 320</span></div>
+              <div class="row"><span class="time">10:38:55</span><span class="model"><b>u2-flash</b> · —</span><span class="tok">980 → 64</span></div>
+              <div class="row"><span class="time">10:37:12</span><span class="model"><b>step-5-preview</b> · gateway</span><span class="tok">8.7K → 2.4K</span></div>
+              <div class="row"><span class="time">10:35:44</span><span class="model"><b>deepseek-flash</b> · zenith</span><span class="tok">2.2K → 410</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 用量查询 -->
+        <div class="pane" data-pane="query">
+          <div class="h2"><span>查询条件</span></div>
+          <div class="card">
+            <div style="display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:var(--oq-muted);width:54px;flex:none">区间</span>
+                <div class="pills">
+                  <button class="pill">今日</button><button class="pill">7 天</button>
+                  <button class="pill" data-on="1">30 天</button><button class="pill">90 天</button>
+                  <button class="pill">全部</button><button class="pill">自定义</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:var(--oq-muted);width:54px;flex:none">分组</span>
+                <div class="pills">
+                  <button class="pill" data-on="1">模型</button><button class="pill">项目</button>
+                  <button class="pill">会话</button><button class="pill">工具</button><button class="pill">渠道</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:var(--oq-muted)">来源</span>
+                <div class="pills">
+                  <button class="pill" data-on="1">本机 + 网关</button><button class="pill">仅本机</button><button class="pill">仅网关</button>
+                </div>
+                <span style="flex:1"></span>
+                <button class="btn primary">运行查询</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="h2"><span>查询结果</span><em>模型 × 渠道 · 432 行</em></div>
+          <div class="card">
+            <table class="tbl">
+              <thead><tr><th>模型</th><th>渠道</th><th class="n">总量</th><th class="n">请求</th><th class="n">占比</th></tr></thead>
+              <tbody>
+                <tr><td style="color:var(--oq-ink);font-weight:500">u2-flash</td><td style="color:var(--oq-faint)">直连</td><td class="n">357.7M</td><td class="n">1,506</td><td class="n">48.4%</td></tr>
+                <tr><td style="color:var(--oq-ink);font-weight:500">u2-flash</td><td style="color:var(--oq-faint)">网关</td><td class="n">98.2M</td><td class="n">412</td><td class="n">13.3%</td></tr>
+                <tr><td style="color:var(--oq-ink);font-weight:500">step-5-preview</td><td style="color:var(--oq-faint)">直连</td><td class="n">182.6M</td><td class="n">821</td><td class="n">24.7%</td></tr>
+                <tr><td style="color:var(--oq-ink);font-weight:500">deepseek-flash</td><td style="color:var(--oq-faint)">直连</td><td class="n">39.6M</td><td class="n">169</td><td class="n">5.4%</td></tr>
+                <tr><td style="color:var(--oq-ink);font-weight:500">deepseek-v4.1</td><td style="color:var(--oq-faint)">网关</td><td class="n">34.0M</td><td class="n">88</td><td class="n">4.6%</td></tr>
+              </tbody>
+              <tfoot><tr><td colspan="2">合计</td><td class="n">712.1M</td><td class="n">2,996</td><td class="n">96.4%</td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- 3 外观 -->
+        <div class="pane" data-pane="conf">
+          <div class="h2"><span>悬浮窗外观</span><em>只影响小窗口</em></div>
+
+          <div class="card">
+            <div class="chead"><span class="t">小窗口</span><span class="fill"></span><button class="sw" data-on="1"><i></i></button></div>
+            <div class="desc">悬浮于侧边的额度轮播挂件 · 单源展示，右键或滑动切换 Opencode｜DeepSeek｜R4Coder｜TokenMeter</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">贴边收起</span><span class="fill"></span><button class="sw" data-on="1"><i></i></button></div>
+            <div class="desc">再往边缘拽一下收成把手条，鼠标移上自动展开、点击可固定。仅存本机。</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">面板材质</span><span class="fill"></span>
+              <div class="pills">
+                <button class="pill" data-on="1">经典</button><button class="pill">液态玻璃</button>
+                <button class="pill">亚克力</button><button class="pill">哑光纸</button>
+              </div>
+            </div>
+            <div class="desc">液态玻璃跟随指针高光；亚克力景深最强但更耗 GPU；哑光纸不透明、零模糊。</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">悬浮窗模板</span><span class="fill"></span>
+              <div class="pills"><button class="pill" data-on="1">经典版</button><button class="pill">紧凑版</button></div>
+            </div>
+            <div class="desc">小窗口 TokenMeter 轮播页的排版模板</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">小窗口图表</span><span class="fill"></span>
+              <div class="pills"><button class="pill" data-on="1">柱状</button><button class="pill">热力图</button></div>
+            </div>
+            <div class="desc">柱状 = 近 7 日趋势；热力图 = 当月日历。与「用量统计」页的图表选择互不影响。</div>
+          </div>
+        </div>
+
+        <!-- 4 数据源 -->
+        <div class="pane" data-pane="data">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="h2" style="flex:1;margin:0"><span>数据源</span><em>凭证与连通性</em></div>
+            <button class="icobtn" title="原始响应">{}</button>
+            <button class="btn sm">全部测试</button>
+          </div>
+
+          <div class="card">
+            <div class="src">
+              <span class="ico" style="background:linear-gradient(135deg,#cc785c,#8f4a34)">Oc</span>
+              <span class="meta">
+                <span class="nm">Opencode <span class="bdg acc">Go</span></span>
+                <span class="sub2">18/25 · 3 天 4 小时</span>
+              </span>
+              <span class="bdg ok"><span class="sdot ok"></span>正常</span>
+              <span class="mask">opc…9f2a</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+            <div class="src">
+              <span class="ico" style="background:linear-gradient(135deg,#5db8a6,#2f6f63)">DS</span>
+              <span class="meta">
+                <span class="nm">DeepSeek</span>
+                <span class="sub2">¥ 42.80 · 可用</span>
+              </span>
+              <span class="bdg ok"><span class="sdot ok"></span>正常</span>
+              <span class="mask">sk-…4c81</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+            <div class="src">
+              <span class="ico" style="background:linear-gradient(135deg,#e8a55a,#a06a24)">R4</span>
+              <span class="meta">
+                <span class="nm">R4Coder</span>
+                <span class="sub2">api.r4.codes · 套餐剩 62%</span>
+              </span>
+              <span class="bdg warn"><span class="sdot warn"></span>待检测</span>
+              <span class="mask">cod…7d10</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+          </div>
+
+          <div class="foot">Token 只走请求头，不写入 URL / 日志 / 数据库；Host 端不持久化凭据，转发后即丢弃。</div>
+        </div>
+
+        <!-- 5 通用 -->
+        <div class="pane" data-pane="gen">
+          <div class="h2"><span>通用</span></div>
+
+          <div class="card">
+            <div class="chead"><span class="t">自动刷新</span><span class="fill"></span>
+              <div style="display:flex;align-items:center;gap:8px"><input class="inp" value="120"><span class="unit">秒</span></div>
+            </div>
+            <div class="desc">额度数据的自动拉取周期（30–3600 秒）</div>
+          </div>
+
+          <div class="card">
+            <div class="chead"><span class="t">侧栏入口</span><span class="fill"></span><button class="sw" data-on="1"><i></i></button></div>
+            <div class="desc">在左侧栏显示「用量与额度」入口。关闭不影响悬浮小窗和这里的设置页。需要 DSH v0.2.1+。</div>
+          </div>
+
+          <div class="h2"><span>用量统计外观</span><em>只存本机</em></div>
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:11.5px;color:var(--oq-muted)">预设</span>
+              <div class="pills">
+                <button class="pill" data-on="1">轻卡片</button><button class="pill">专业监控</button><button class="pill">极简一行</button>
+              </div>
+            </div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:3px">
+              <div class="stylerow"><span class="nm">总览</span>
+                <span class="pills"><button class="pill" data-on="1">A</button><button class="pill">B</button><button class="pill">C</button></span>
+                <span class="dsc">仪表盘</span></div>
+              <div class="stylerow"><span class="nm">图表</span>
+                <span class="pills"><button class="pill" data-on="1">A</button><button class="pill">B</button><button class="pill">C</button></span>
+                <span class="dsc">坐标系</span></div>
+              <div class="stylerow"><span class="nm">排行</span>
+                <span class="pills"><button class="pill">A</button><button class="pill">B</button><button class="pill" data-on="1">C</button></span>
+                <span class="dsc">两行制</span></div>
+              <div class="stylerow"><span class="nm">实时</span>
+                <span class="pills"><button class="pill">A</button><button class="pill" data-on="1">B</button><button class="pill">C</button></span>
+                <span class="dsc">sparkline</span></div>
+              <div class="stylerow"><span class="nm">最近调用</span>
+                <span class="pills"><button class="pill" data-on="1">A</button><button class="pill">B</button><button class="pill">C</button></span>
+                <span class="dsc">时间线</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6 维护 -->
+        <div class="pane" data-pane="maint">
+          <div class="h2"><span>账本维护</span><em>不可逆操作需二次确认</em></div>
+
+          <div class="card">
+            <div class="seclab">修复数据</div>
+            <div class="rows">
+              <div class="row"><span class="model"><b>补录缺失会话</b></span>
+                <span style="font-size:10.5px;color:var(--oq-faint);flex:none">3 个 · +1.2M</span>
+                <button class="btn sm">补录</button></div>
+              <div class="row"><span class="model"><b>补齐历史维度</b></span>
+                <span style="font-size:10.5px;color:var(--oq-faint);flex:none">412 行</span>
+                <button class="btn sm">回填</button></div>
+            </div>
+          </div>
+
+          <div class="card" style="border-color:var(--oq-danger-line);background:var(--oq-danger-bg)">
+            <div class="seclab" style="color:var(--oq-danger)">危险区 · 不可逆</div>
+            <div class="rows">
+              <div class="row" style="border-bottom:none;padding-bottom:0"><span class="model"><b style="color:var(--oq-danger)">清空用量账本</b></span>
+                <span style="font-size:10.5px;color:var(--oq-faint);flex:none">先写快照</span>
+                <button class="btn danger sm">清空</button></div>
+            </div>
+          </div>
+
+          <div class="h2"><span>重置</span></div>
+          <div class="card">
+            <div class="chead"><span class="t">恢复默认</span><span class="fill"></span>
+              <div style="display:flex;gap:6px">
+                <button class="btn danger sm">重置配置</button>
+                <button class="btn danger sm">重置位置</button>
+              </div>
+            </div>
+            <div class="desc">把配置还原默认 / 让悬浮窗回到默认停靠点。</div>
+          </div>
+        </div>
+
+        <!-- 7 网关 -->
+        <div class="pane" data-pane="gateway">
+          <div class="h2"><span>网关监测</span><em>只读对方账本</em></div>
+
+          <div class="card deep">
+            <div class="chead">
+              <span class="t">dsh-providers-hub</span><span class="fill"></span>
+              <span class="bdg ok"><span class="sdot ok"></span>v1</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+            <div class="desc">读取对方落盘的 token-ledger.json，只取 channel=gateway 的日聚合。不写入对方任何文件。</div>
+
+            <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+              <div><b class="num" style="color:var(--oq-accent-text)">48.2M</b><i>网关总量</i></div>
+              <div><b class="num">412</b><i>请求</i></div>
+              <div><b class="num">52.1%</b><i>占全机</i></div>
+            </div>
+
+            <div style="margin-top:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <div class="pills">
+                <button class="pill" data-on="1">今日</button><button class="pill">7 天</button><button class="pill">30 天</button>
+              </div>
+              <span style="flex:1"></span>
+              <span style="font-size:9.5px;color:var(--oq-faint)">UTC+8 日界 · 账号已脱敏</span>
+            </div>
+          </div>
+
+          <div class="h2"><span>渠道 / 模型</span><em>4 条</em></div>
+          <div class="card">
+            <div class="rows" style="margin-top:0">
+              <div class="row"><span class="model"><b>openai</b> · u2-flash</span><span class="tok">28.4M · 58%</span></div>
+              <div class="row"><span class="model"><b>openai</b> · step-5-preview</span><span class="tok">12.1M · 25%</span></div>
+              <div class="row"><span class="model"><b>anthropic</b> · deepseek-v4.1</span><span class="tok">5.6M · 12%</span></div>
+              <div class="row"><span class="model"><b>openai</b> · deepseek-flash</span><span class="tok">2.1M · 5%</span></div>
+            </div>
+          </div>
+
+          <div class="notice"><span>⚠</span><span>网关只有「日 × 渠道 × 账号 × 模型」聚合，没有项目 / 会话 / 工具 / 24 小时分布。</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══════════ 面板 2（仅并排对照时可见，固定深色） ══════════ -->
+    <div class="panel" id="panelDark" data-dsw="dark" style="display:none">
+      <div class="hero">
+        <div class="dots" aria-hidden="true">
+          <i style="right:8%;top:20%;width:8px;height:8px;background:#cc785c"></i>
+          <i style="right:22%;bottom:24%;width:6px;height:6px;background:#e8a55a"></i>
+          <i style="right:34%;top:26%;width:5px;height:5px;background:#5db8a6"></i>
+        </div>
+        <div class="row">
+          <div>
+            <div class="wk">
+              <span class="mk">用</span>
+              <span class="tx">Dsh Quota Widget</span>
+              <span class="themebadge" style="display:inline-flex">DARK</span>
+            </div>
+            <h1>用量与额度</h1>
+            <p>Token 用量统计 · Opencode / DeepSeek / R4Coder 额度。数据全部留在本机。</p>
+          </div>
+          <div class="acts">
+            <button class="btn">悬浮窗</button>
+            <button class="btn primary">导出</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabgrid" data-grid="2">
+        <button class="tg" data-tab="usage" data-active="1">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 12V7M6 12V4M10 12V9M14 12V2"/></svg>
+          用量统计
+        </button>
+        <button class="tg" data-tab="query">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+          用量查询
+        </button>
+        <button class="tg" data-tab="conf">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2.6" width="12" height="10.8" rx="2"/><path d="M2 6h12"/></svg>
+          外观
+        </button>
+        <button class="tg" data-tab="data">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><ellipse cx="8" cy="4" rx="5.4" ry="2.2"/><path d="M2.6 4v8c0 1.2 2.4 2.2 5.4 2.2s5.4-1 5.4-2.2V4"/></svg>
+          数据源
+        </button>
+        <button class="tg" data-tab="gen">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.3"/><path d="M8 1.7v1.7M8 12.6v1.7M1.7 8h1.7M12.6 8h1.7"/></svg>
+          通用
+        </button>
+        <button class="tg" data-tab="maint">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.4 2.2a3.6 3.6 0 004.4 4.7l-8 8a2.2 2.2 0 01-3.1-3.1z"/></svg>
+          维护
+        </button>
+        <button class="tg" data-tab="gateway">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 5.6h12M2 10.4h12"/><circle cx="5.4" cy="5.6" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.6" cy="10.4" r="1.2" fill="currentColor" stroke="none"/></svg>
+          网关
+          <span class="alert"></span>
+        </button>
+      </div>
+
+      <div class="body">
+        <div class="panehead" id="panehead2">以下为「用量统计」页内容</div>
+
+        <div class="pane" data-pane="usage" data-active="1">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="pills">
+              <button class="pill">今日</button><button class="pill">7 天</button>
+              <button class="pill" data-on="1">30 天</button><button class="pill">90 天</button>
+              <button class="pill">全部</button>
+            </div>
+            <span style="flex:1"></span>
+            <div class="pills">
+              <button class="pill" data-on="1">柱状</button><button class="pill">折线</button>
+              <button class="pill">热力</button>
+            </div>
+          </div>
+
+          <div class="card flat">
+            <div class="chead"><span class="t">总览</span><span class="hint">近 30 天 · 6 天有数据</span></div>
+            <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-top:14px">
+              <div style="flex:1;min-width:150px">
+                <div class="big num">739.5<em>M</em></div>
+                <div class="subrow">
+                  <span>日均 123.2M</span>
+                  <span class="delta">↑ 12.4%</span>
+                </div>
+              </div>
+              <div style="flex:none;display:flex;align-items:center;gap:10px">
+                <svg width="48" height="48" viewBox="0 0 48 48" aria-label="命中率 96.3%">
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="var(--oq-track)" stroke-width="3.5"></circle>
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="var(--oq-accent)" stroke-width="3.5"
+                          stroke-linecap="round" stroke-dasharray="118 126" transform="rotate(-90 24 24)"></circle>
+                </svg>
+                <div>
+                  <div class="num serif" style="font-size:16px;color:var(--oq-ink)">96.3%</div>
+                  <div style="font-size:10.5px;color:var(--oq-muted)">命中率</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stack">
+              <span style="width:3.6%;background:var(--oq-accent)"></span>
+              <span style="width:96.3%;background:var(--oq-accent);opacity:.38"></span>
+              <span style="width:0.4%;background:var(--oq-success)"></span>
+            </div>
+            <div class="stacklbl">
+              <span style="color:var(--oq-accent-text)">新输入 3.6%</span>
+              <span>缓存读 96.3%</span>
+              <span style="color:var(--oq-success)">输出 0.4%</span>
+            </div>
+
+            <div class="kpis">
+              <div><b class="num">3,241</b><i>回复</i></div>
+              <div><b class="num">173</b><i>轮次</i></div>
+              <div><b class="num">3,256</b><i>步数</i></div>
+              <div><b class="num">4,182</b><i>工具</i></div>
+            </div>
+          </div>
+
+          <div class="h2"><span>按日趋势</span><em>峰值 48.2M</em></div>
+          <div class="card">
+            <div class="chart" data-chart="2"></div>
+            <div class="chart-x" data-chartx="2"></div>
+          </div>
+
+          <div class="h2"><span>模型排行</span></div>
+          <div class="card">
+            <div class="rank">
+              <div class="rrow"><span class="idx">01</span><span class="nm">u2-flash</span>
+                <span class="tr"><span class="fl" style="width:100%"></span></span><span class="v num">357.7M</span></div>
+              <div class="rrow"><span class="idx">02</span><span class="nm">step-5-preview</span>
+                <span class="tr"><span class="fl" style="width:51%"></span></span><span class="v num">182.6M</span></div>
+              <div class="rrow"><span class="idx">03</span><span class="nm">deepseek-flash</span>
+                <span class="tr"><span class="fl" style="width:11%"></span></span><span class="v num">39.6M</span></div>
+              <div class="rrow"><span class="idx">04</span><span class="nm">deepseek-v4.1</span>
+                <span class="tr"><span class="fl" style="width:10%"></span></span><span class="v num">34.0M</span></div>
+            </div>
+          </div>
+
+          <div class="h2"><span>最近调用</span></div>
+          <div class="card">
+            <div class="rows" style="margin-top:0">
+              <div class="row"><span class="time">10:42:31</span><span class="model"><b>u2-flash</b> · harmonycast</span><span class="tok">12.3K → 1.2K</span></div>
+              <div class="row"><span class="time">10:40:07</span><span class="model"><b>deepseek-v4.1</b> · zenith</span><span class="tok">4.1K → 320</span></div>
+              <div class="row"><span class="time">10:38:55</span><span class="model"><b>u2-flash</b> · —</span><span class="tok">980 → 64</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="query">
+          <div class="h2"><span>查询条件</span></div>
+          <div class="card">
+            <div style="display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:var(--oq-muted);width:54px;flex:none">区间</span>
+                <div class="pills">
+                  <button class="pill">今日</button><button class="pill">7 天</button>
+                  <button class="pill" data-on="1">30 天</button><button class="pill">90 天</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="font-size:11.5px;color:var(--oq-muted);width:54px;flex:none">分组</span>
+                <div class="pills">
+                  <button class="pill" data-on="1">模型</button><button class="pill">项目</button><button class="pill">渠道</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <span style="flex:1"></span>
+                <button class="btn primary">运行查询</button>
+              </div>
+            </div>
+          </div>
+          <div class="h2"><span>查询结果</span><em>432 行</em></div>
+          <div class="card">
+            <table class="tbl">
+              <thead><tr><th>模型</th><th>渠道</th><th class="n">总量</th><th class="n">占比</th></tr></thead>
+              <tbody>
+                <tr><td style="color:var(--oq-ink);font-weight:500">u2-flash</td><td style="color:var(--oq-faint)">直连</td><td class="n">357.7M</td><td class="n">48.4%</td></tr>
+                <tr><td style="color:var(--oq-ink);font-weight:500">u2-flash</td><td style="color:var(--oq-faint)">网关</td><td class="n">98.2M</td><td class="n">13.3%</td></tr>
+                <tr><td style="color:var(--oq-ink);font-weight:500">step-5-preview</td><td style="color:var(--oq-faint)">直连</td><td class="n">182.6M</td><td class="n">24.7%</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="conf">
+          <div class="h2"><span>悬浮窗外观</span></div>
+          <div class="card">
+            <div class="chead"><span class="t">小窗口</span><span class="fill"></span><button class="sw" data-on="1"><i></i></button></div>
+            <div class="desc">悬浮于侧边的额度轮播挂件</div>
+          </div>
+          <div class="card">
+            <div class="chead"><span class="t">贴边收起</span><span class="fill"></span><button class="sw" data-on="1"><i></i></button></div>
+            <div class="desc">再往边缘拽一下收成把手条。</div>
+          </div>
+          <div class="card">
+            <div class="chead"><span class="t">面板材质</span><span class="fill"></span>
+              <div class="pills">
+                <button class="pill" data-on="1">经典</button><button class="pill">玻璃</button><button class="pill">纸</button>
+              </div>
+            </div>
+            <div class="desc">液态玻璃跟随指针高光；哑光纸零模糊。</div>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="data">
+          <div class="h2"><span>数据源</span></div>
+          <div class="card">
+            <div class="src">
+              <span class="ico" style="background:linear-gradient(135deg,#cc785c,#8f4a34)">Oc</span>
+              <span class="meta">
+                <span class="nm">Opencode <span class="bdg acc">Go</span></span>
+                <span class="sub2">18/25 · 3 天 4 小时</span>
+              </span>
+              <span class="bdg ok"><span class="sdot ok"></span>正常</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+            <div class="src">
+              <span class="ico" style="background:linear-gradient(135deg,#5db8a6,#2f6f63)">DS</span>
+              <span class="meta">
+                <span class="nm">DeepSeek</span>
+                <span class="sub2">¥ 42.80 · 可用</span>
+              </span>
+              <span class="bdg ok"><span class="sdot ok"></span>正常</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+            <div class="src">
+              <span class="ico" style="background:linear-gradient(135deg,#e8a55a,#a06a24)">R4</span>
+              <span class="meta">
+                <span class="nm">R4Coder</span>
+                <span class="sub2">api.r4.codes · 剩 62%</span>
+              </span>
+              <span class="bdg warn"><span class="sdot warn"></span>待检测</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="gen">
+          <div class="h2"><span>通用</span></div>
+          <div class="card">
+            <div class="chead"><span class="t">自动刷新</span><span class="fill"></span>
+              <div style="display:flex;align-items:center;gap:8px"><input class="inp" value="120"><span class="unit">秒</span></div>
+            </div>
+            <div class="desc">额度数据的自动拉取周期（30–3600 秒）</div>
+          </div>
+          <div class="card">
+            <div class="chead"><span class="t">侧栏入口</span><span class="fill"></span><button class="sw" data-on="1"><i></i></button></div>
+            <div class="desc">在左侧栏显示「用量与额度」入口。</div>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="maint">
+          <div class="h2"><span>账本维护</span></div>
+          <div class="card">
+            <div class="seclab">修复数据</div>
+            <div class="rows">
+              <div class="row"><span class="model"><b>补录缺失会话</b></span>
+                <button class="btn sm">补录</button></div>
+              <div class="row"><span class="model"><b>补齐历史维度</b></span>
+                <button class="btn sm">回填</button></div>
+            </div>
+          </div>
+          <div class="card" style="border-color:var(--oq-danger-line);background:var(--oq-danger-bg)">
+            <div class="seclab" style="color:var(--oq-danger)">危险区</div>
+            <div class="rows">
+              <div class="row" style="border-bottom:none;padding-bottom:0"><span class="model"><b style="color:var(--oq-danger)">清空用量账本</b></span>
+                <button class="btn danger sm">清空</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pane" data-pane="gateway">
+          <div class="h2"><span>网关监测</span></div>
+          <div class="card deep">
+            <div class="chead">
+              <span class="t">dsh-providers-hub</span><span class="fill"></span>
+              <span class="bdg ok"><span class="sdot ok"></span>v1</span>
+              <button class="sw" data-on="1"><i></i></button>
+            </div>
+            <div class="desc">只取 channel=gateway 的日聚合。</div>
+            <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+              <div><b class="num" style="color:var(--oq-accent-text)">48.2M</b><i>总量</i></div>
+              <div><b class="num">412</b><i>请求</i></div>
+              <div><b class="num">52.1%</b><i>占全机</i></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ── 图表生成（两面板共用） ── */
+var VALS=[22,31,18,44,52,38,26,61,72,48,33,55,68,41,29,37,58,76,64,42,35,51,67,88,73,49,39,56,62,45];
+function buildCharts(){
+  var max=Math.max.apply(null,VALS);
+  document.querySelectorAll('[data-chart]').forEach(function(c){
+    if(c.dataset.built) return;
+    c.dataset.built='1';
+    VALS.forEach(function(v){
+      var d=document.createElement('div'); d.className='bar';
+      var b=document.createElement('span'); b.className='b'+(v===max?' hot':'');
+      b.style.height=Math.max(3,Math.round(v/max*100))+'%';
+      d.appendChild(b); c.appendChild(d);
+    });
+  });
+  document.querySelectorAll('[data-chartx]').forEach(function(x){
+    if(x.dataset.built) return;
+    x.dataset.built='1';
+    for(var i=0;i<30;i+=5){
+      var s=document.createElement('span'); s.textContent=('0'+(i+1)).slice(-2); x.appendChild(s);
+    }
+  });
+}
+buildCharts();
+
+/* ── tab / pill / switch 交互（按面板独立作用域） ── */
+document.addEventListener('click',function(e){
+  var tg=e.target.closest('.tg');
+  if(tg){
+    var panel=tg.closest('.panel');
+    var k=tg.dataset.tab;
+    panel.querySelectorAll('.tg').forEach(function(t){ t.dataset.active = t.dataset.tab===k?'1':'0'; });
+    panel.querySelectorAll('.pane').forEach(function(p){ p.dataset.active = p.dataset.pane===k?'1':'0'; });
+    var ph=panel.querySelector('.panehead');
+    if(ph){
+      var label=tg.textContent.trim();
+      ph.textContent='以下为「'+label+'」页内容';
+    }
+    return;
+  }
+  var p=e.target.closest('.pill');
+  if(p){
+    var g=p.parentElement;
+    if(g&&g.classList.contains('pills')){
+      g.querySelectorAll('.pill').forEach(function(x){ x.removeAttribute('data-on'); });
+      p.setAttribute('data-on','1');
+    }
+    return;
+  }
+  var s=e.target.closest('.sw');
+  if(s){ s.dataset.on = s.dataset.on==='1'?'0':'1'; }
+});
+
+/* ── 极性切换 ── */
+var compare=document.getElementById('compare');
+var panelMain=document.getElementById('panelMain');
+var panelDark=document.getElementById('panelDark');
+
+/* ⚠️ 注意这里切换的是 data-dsw —— 即**宿主变量**，不是插件自己的变量。
+   这正是真实机制：DSH 换主题 = --dsw-alias-* 换值，插件随之重绘。
+   插件侧没有任何"浅色样式"，它只是忠实地引用宿主变量。 */
+function setPol(mode){
+  document.querySelectorAll('.segbtn').forEach(function(b){
+    b.dataset.on = b.dataset.pol===mode ? '1':'0';
+  });
+  var badge1=document.getElementById('badge1');
+  var root=document.documentElement;
+
+  if(mode==='split'){
+    compare.dataset.mode='split';
+    panelMain.style.display='';
+    panelDark.style.display='';
+    /* 左面板喂浅色宿主变量，右面板喂深色宿主变量 */
+    panelMain.setAttribute('data-dsw','light');
+    panelDark.setAttribute('data-dsw','dark');
+    root.removeAttribute('data-dsw');
+    badge1.textContent='LIGHT';
+    badge1.style.display='inline-flex';
+  } else {
+    compare.dataset.mode='single';
+    panelDark.style.display='none';
+    panelMain.style.display='';
+    badge1.style.display='none';
+    panelMain.removeAttribute('data-dsw');
+    if(mode==='auto'){
+      /* 交还给 DSH / 系统的 prefers-color-scheme */
+      root.removeAttribute('data-dsw');
+    } else {
+      /* 强制：改宿主变量的值，插件侧不动 */
+      root.setAttribute('data-dsw',mode);
+    }
+  }
+  /* 并排时面板曾被 display:none，柱高按 0 算，需重建 */
+  document.querySelectorAll('[data-chart]').forEach(function(c){ c.innerHTML=''; delete c.dataset.built; });
+  document.querySelectorAll('[data-chartx]').forEach(function(x){ x.innerHTML=''; delete x.dataset.built; });
+  buildCharts();
+}
+
+document.querySelectorAll('.segbtn').forEach(function(b){
+  b.addEventListener('click',function(){ setPol(b.dataset.pol); });
+});
+
+/* 并排模式下强制刷新图表（display:none 期间建立过，尺寸为 0，需重建） */
+window.addEventListener('resize',function(){
+  if(compare.dataset.mode==='split'){
+    document.querySelectorAll('[data-chart]').forEach(function(c){
+      c.innerHTML=''; delete c.dataset.built;
+    });
+    document.querySelectorAll('[data-chartx]').forEach(function(x){
+      x.innerHTML=''; delete x.dataset.built;
+    });
+    buildCharts();
+  }
+});
+</script>
+</body>
+</html>

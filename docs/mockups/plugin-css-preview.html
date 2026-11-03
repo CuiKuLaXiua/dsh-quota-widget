@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>插件真实 CSS · 珊瑚统一版</title>
+<style>
+body{margin:0;background:#0b0c0f;font-family:Inter,-apple-system,"Microsoft YaHei",sans-serif;color:#eceef6}
+.head{max-width:1260px;margin:0 auto;padding:22px 20px 4px}
+.head h1{margin:0 0 5px;font-size:18px;font-weight:650;letter-spacing:-.3px}
+.head p{margin:0;font-size:11.5px;line-height:1.8;color:#9b9dae}
+.head code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;background:#1b1e25;padding:1px 5px;border-radius:3px;color:#e8a184}
+.grid{max-width:1260px;margin:0 auto;padding:12px 20px 44px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:940px){.grid{grid-template-columns:1fr}}
+.wrap{border:1px solid #24262d;border-radius:14px;overflow:hidden;background:#14161b}
+.wrap .lb{padding:8px 14px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#6d7080;border-bottom:1px solid #24262d;font-family:ui-monospace,Consolas,monospace}
+.host{height:860px;display:flex}
+.host[data-dsw=dark]{
+  --dsw-alias-bg-layer-2:#1a1a1f;--dsw-alias-bg-layer-1:#242433;
+  --dsw-alias-border-l1:rgba(255,255,255,.08);--dsw-alias-border-l2:rgba(255,255,255,.14);
+  --dsw-alias-label-primary:#ffffff;--dsw-alias-label-secondary:#a0a0b0;
+  --dsw-alias-label-caption:#9a9aaa;--dsw-alias-label-tertiary:#7a7a8a;
+  --dsw-alias-state-business-primary:#8b7bff;--dsw-alias-state-success-primary:#34d399;
+  --dsw-alias-interactive-bg-hover:rgba(255,255,255,.06);
+}
+.host[data-dsw=light]{
+  --dsw-alias-bg-layer-2:#ffffff;--dsw-alias-bg-layer-1:#f6f5f4;
+  --dsw-alias-border-l1:rgba(0,0,0,.10);--dsw-alias-border-l2:rgba(0,0,0,.16);
+  --dsw-alias-label-primary:#1a1a1a;--dsw-alias-label-secondary:#5f5f68;
+  --dsw-alias-label-caption:#8a8a94;--dsw-alias-label-tertiary:#6b6b74;
+  --dsw-alias-state-business-primary:#6d5bff;--dsw-alias-state-success-primary:#10b981;
+  --dsw-alias-interactive-bg-hover:rgba(0,0,0,.05);
+}
+:root,[data-dsw]{--oq-canvas:color-mix(in oklab, var(--dsw-alias-bg-layer-2,#1a1a1f) 94%, #f5e9d4 6%);--oq-surface:color-mix(in oklab, var(--dsw-alias-bg-layer-1,#242433) 92%, #efe4d0 8%);--oq-hairline:color-mix(in oklab, var(--dsw-alias-border-l1,rgba(255,255,255,.08)) 88%, #cc785c 12%);--oq-hairline-strong:var(--dsw-alias-border-l2,rgba(255,255,255,.14));--oq-ink:var(--dsw-alias-label-primary,#fff);--oq-muted:var(--dsw-alias-label-secondary,#a0a0b0);--oq-faint:color-mix(in oklab, var(--dsw-alias-label-caption,#9a9aaa) 76%, var(--dsw-alias-label-primary,#fff) 24%);--oq-body:color-mix(in oklab, var(--dsw-alias-label-primary,#fff) 88%, var(--dsw-alias-bg-layer-2,#1a1a1f) 12%);--oq-surface-2:color-mix(in oklab, var(--dsw-alias-bg-layer-1,#242433) 90%, var(--dsw-alias-label-primary,#fff) 10%);--oq-surface-3:color-mix(in oklab, var(--dsw-alias-bg-layer-1,#242433) 80%, var(--dsw-alias-label-primary,#fff) 20%);--oq-hairline-soft:color-mix(in oklab, var(--dsw-alias-border-l1,rgba(255,255,255,.08)) 66%, transparent);--oq-track:color-mix(in oklab, var(--dsw-alias-bg-layer-1,#242433) 82%, var(--dsw-alias-label-primary,#fff) 18%);--oq-accent:color-mix(in oklab, #cc785c 74%, var(--dsw-alias-label-primary,#fff) 26%);--oq-accent-hover:color-mix(in oklab, #cc785c 62%, var(--dsw-alias-label-primary,#fff) 38%);--oq-accent-ink:var(--dsw-alias-bg-layer-2,#1a1a1f);--oq-accent-text:color-mix(in oklab, #cc785c 70%, var(--dsw-alias-label-primary,#fff) 30%);--oq-accent-soft:color-mix(in oklab, #cc785c 14%, var(--dsw-alias-bg-layer-2,#1a1a1f) 86%);--oq-accent-line:color-mix(in oklab, #cc785c 38%, var(--dsw-alias-bg-layer-2,#1a1a1f) 62%);--oq-success:color-mix(in oklab, var(--dsw-alias-state-success-primary,#34d399) 66%, var(--dsw-alias-label-primary,#fff) 34%);--oq-warn:color-mix(in oklab, #d4a017 58%, var(--dsw-alias-label-primary,#fff) 42%);--oq-warn-bg:color-mix(in oklab, #d4a017 12%, var(--dsw-alias-bg-layer-2,#1a1a1f) 88%);--oq-warn-line:color-mix(in oklab, #d4a017 30%, var(--dsw-alias-bg-layer-2,#1a1a1f) 70%);--oq-danger:color-mix(in oklab, #c64545 66%, var(--dsw-alias-label-primary,#fff) 34%);--oq-danger-bg:color-mix(in oklab, #c64545 10%, var(--dsw-alias-bg-layer-2,#1a1a1f) 90%);--oq-danger-line:color-mix(in oklab, #c64545 30%, var(--dsw-alias-bg-layer-2,#1a1a1f) 70%);--oq-sem-fresh:var(--oq-accent);--oq-sem-cache:color-mix(in oklab, var(--oq-accent) 58%, var(--dsw-alias-bg-layer-2,#1a1a1f) 42%);--oq-sem-out:color-mix(in oklab, var(--dsw-alias-state-success-primary,#34d399) 66%, var(--dsw-alias-label-primary,#fff) 34%);--oq-sem-write:color-mix(in oklab, #0ea5e9 66%, var(--dsw-alias-label-primary,#fff) 34%);--bmon-h0:color-mix(in oklab, var(--oq-accent) 0%,  var(--oq-surface-2,#363645) 100%);--bmon-h1:color-mix(in oklab, var(--oq-accent) 12%, var(--oq-surface-2,#363645) 88%);--bmon-h2:color-mix(in oklab, var(--oq-accent) 26%, var(--oq-surface-2,#363645) 74%);--bmon-h3:color-mix(in oklab, var(--oq-accent) 42%, var(--oq-surface-2,#363645) 58%);--bmon-h4:color-mix(in oklab, var(--oq-accent) 58%, var(--oq-surface-2,#363645) 42%);--bmon-h5:color-mix(in oklab, var(--oq-accent) 74%, var(--oq-surface-2,#363645) 26%);--bmon-h6:color-mix(in oklab, var(--oq-accent) 88%, var(--oq-surface-2,#363645) 12%);--bmon-c1:color-mix(in oklab, #6b87d9 72%, var(--dsw-alias-label-primary,#fff) 28%);--bmon-c2:color-mix(in oklab, #b08427 72%, var(--dsw-alias-label-primary,#fff) 28%);--bmon-c3:color-mix(in oklab, #c65f7f 72%, var(--dsw-alias-label-primary,#fff) 28%);--bmon-c4:color-mix(in oklab, #8d7ce4 72%, var(--dsw-alias-label-primary,#fff) 28%);--oq-hero-bg:#181715;--oq-hero-ink:#faf9f5;--oq-hero-muted:#a09d96;--oq-hero-hairline:rgba(255,255,255,0.12);--oq-grid-bg:color-mix(in oklab, var(--dsw-alias-bg-layer-2,#1a1a1f) 96%, var(--dsw-alias-label-primary,#fff) 4%);--oq-glass-hi:color-mix(in oklab, var(--dsw-alias-label-primary,#fff) 20%, transparent);--oq-glass-tint:color-mix(in oklab, var(--oq-accent) 26%, transparent);--oq-glass-border:var(--dsw-alias-border-l1,rgba(255,255,255,0.10));--oq-glass-shadow:0 22px 48px -18px color-mix(in oklab, var(--dsw-alias-bg-layer-2,#1a1a1f) 78%, transparent);}
+.oq-overlay{position:fixed;left:6px;bottom:80px;width:260px;max-width:min(260px,calc(100vw - 24px));z-index:999;pointer-events:auto;font-family:inherit;box-sizing:border-box;overflow:visible}
+.oq-card{width:260px;max-width:min(260px,calc(100vw - 24px));border-radius:14px;background:var(--oq-canvas,#1a1a1f);border:1px solid var(--oq-hairline,rgba(255,255,255,0.08));box-shadow:var(--dsw-shadow-lv3,0 10px 30px rgba(0,0,0,0.35));overflow:hidden;backdrop-filter:blur(10px);display:flex;flex-direction:column;box-sizing:border-box;min-height:auto;transition:height 0.22s cubic-bezier(0.22,1,0.36,1);cursor:grab}
+.oq-card:active{cursor:grabbing}
+.oq-card.oq-edge{will-change:transform;transition:transform 0.42s cubic-bezier(0.32,0.72,0,1)}
+.oq-card.oq-edge:not(.oq-edge-open){overflow:visible;pointer-events:none;background:transparent!important;border-color:transparent!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+.oq-card.oq-edge:not(.oq-edge-open) .oq-edge-handle{pointer-events:auto}
+.oq-overlay.oq-overlay--collapsed{pointer-events:none!important}
+.oq-card.oq-edge:not(.oq-edge-open)::before,.oq-card.oq-edge:not(.oq-edge-open)::after{opacity:0!important;background:none!important}
+.oq-card.oq-edge-open{transition:transform 0.40s cubic-bezier(0.16,1,0.3,1),height 0.22s cubic-bezier(0.22,1,0.36,1)}
+.oq-card.oq-edge-left{transform:translateX(calc(-100% - 6px))}
+.oq-card.oq-edge-right{transform:translateX(calc(100% + 6px))}
+.oq-card.oq-edge .oq-body{opacity:0;transition:opacity 0.12s ease}
+.oq-edge-handle{position:absolute;top:50%;transform:translateY(-50%);height:44px;width:14px;z-index:5;cursor:pointer;display:flex;align-items:center;justify-content:center;border:0;padding:0;background:transparent}
+.oq-edge-handle[data-side=left]{right:-4px}
+.oq-edge-handle[data-side=right]{left:-4px}
+.oq-edge-handle::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:260px;height:44px;border-radius:999px;background:linear-gradient(180deg,rgba(152,140,255,0.46),rgba(133,118,244,0.74) 50%,rgba(152,140,255,0.46));box-shadow:0 0 0 1px rgba(164,152,255,0.42),0 2px 10px -2px rgba(133,118,244,0.45);transition:width 0.18s ease,height 0.18s ease,background 0.18s ease,box-shadow 0.18s ease}
+.oq-edge-handle::after{content:'';position:absolute;top:50%;left:50%;width:2px;height:16px;border-radius:2px;background:repeating-linear-gradient(180deg,rgba(255,255,255,0.96) 0 2px,transparent 2px 5px);opacity:0.62;transform:translate(-50%,-50%);transition:opacity 0.18s ease}
+.oq-edge-handle:hover::before{background:linear-gradient(180deg,rgba(160,148,255,0.62),rgba(140,124,250,0.86) 50%,rgba(160,148,255,0.62));box-shadow:0 0 0 1px rgba(172,160,255,0.58),0 3px 14px -2px rgba(140,124,250,0.58)}
+.oq-edge-handle:hover::after{opacity:0.95}
+.oq-card.oq-edge-open{transform:none;z-index:1002}
+.oq-card.oq-edge-open .oq-body{opacity:1;transition:opacity 0.21s ease}
+.oq-card.oq-edge-open .oq-edge-handle{opacity:0;pointer-events:none;transition:opacity 0.10s ease}
+@keyframes oqEdgePulse{0%,100%{box-shadow:0 0 0 1px rgba(164,152,255,0.34),0 2px 9px -2px rgba(133,118,244,0.38)}50%{box-shadow:0 0 0 1px rgba(182,170,255,0.66),0 2px 17px -1px rgba(133,118,244,0.62)}}
+@keyframes oqEdgeGrip{0%,100%{height:14px;opacity:0.55}50%{height:20px;opacity:1}}
+.oq-card.oq-edge:not(.oq-edge-open) .oq-edge-handle::before{animation:oqEdgePulse 2.4s ease-in-out infinite}
+.oq-card.oq-edge:not(.oq-edge-open) .oq-edge-handle::after{animation:oqEdgeGrip 2.4s ease-in-out infinite}
+.oq-edge-handle:hover::before,.oq-edge-handle:hover::after{animation-play-state:paused}
+@keyframes oqEdgeSnapRing{0%{box-shadow:0 0 0 1px rgba(182,170,255,0.78),0 0 0 0 rgba(152,140,255,0.48)}100%{box-shadow:0 0 0 1px rgba(182,170,255,0),0 0 0 14px rgba(152,140,255,0)}}
+.oq-edge-handle.oq-edge-snap::before{animation:oqEdgeSnapRing 0.65s cubic-bezier(0.16,1,0.3,1) 1!important}
+@media (prefers-reduced-motion:reduce){.oq-card.oq-edge,.oq-card.oq-edge-open,.oq-card.oq-edge .oq-body{transition:none}.oq-card.oq-edge .oq-edge-handle::before,.oq-card.oq-edge .oq-edge-handle::after{animation:none}}
+.oq-card{isolation:isolate}
+.oq-card>.oq-body{position:relative;z-index:1}
+.oq-card::before,.oq-card::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0}
+.oq-card.m-classic::before,.oq-card.m-classic::after{content:none;display:none}
+.oq-overlay.m-liquid,.oq-overlay.m-acrylic{--dsw-alias-bg-layer-1:rgba(255,255,255,0.08);--dsw-alias-bg-layer-2:rgba(255,255,255,0.045);--dsw-alias-border-l1:rgba(255,255,255,0.10);--dsw-alias-border-l2:rgba(255,255,255,0.16)}
+.oq-card.m-liquid .oq-provider,.oq-card.m-liquid .oq-detail,.oq-card.m-liquid .oq-stat,.oq-card.m-liquid .oq-tm-tile,.oq-card.m-acrylic .oq-provider,.oq-card.m-acrylic .oq-detail,.oq-card.m-acrylic .oq-stat,.oq-card.m-acrylic .oq-tm-tile{background:rgba(255,255,255,0.055);border-color:rgba(255,255,255,0.09)}
+.oq-card.m-liquid .oq-provider,.oq-card.m-acrylic .oq-provider{box-shadow:inset 0 1px 0 rgba(255,255,255,0.06)}
+.oq-card.m-liquid .oq-tm-ring b,.oq-card.m-acrylic .oq-tm-ring b{text-shadow:0 1px 3px rgba(0,0,0,0.55)}
+.oq-card.m-liquid{background:radial-gradient(150% 95% at 14% -14%,var(--oq-glass-hi,0.20),rgba(255,255,255,0) 54%),radial-gradient(120% 85% at 92% 118%,var(--oq-glass-tint,0.26),rgba(139,123,255,0) 62%),color-mix(in oklab, var(--oq-canvas,#1a1a1f) 46%, transparent);-webkit-backdrop-filter:blur(7px) saturate(210%) brightness(1.06);backdrop-filter:blur(7px) saturate(210%) brightness(1.06);border-color:var(--oq-glass-border,rgba(255,255,255,0.10));box-shadow:var(--oq-glass-shadow,0 22px 48px -18px rgba(0,0,0,0.72)),0 0 0 1px rgba(255,255,255,0.05),inset 0 1px 1px rgba(255,255,255,0.40),inset 0 -18px 28px -20px rgba(139,123,255,0.50)}
+.oq-card.m-liquid::before{background:radial-gradient(120px 90px at var(--oq-mx,18%) var(--oq-my,0%),rgba(255,255,255,0.22),rgba(255,255,255,0.06) 38%,rgba(255,255,255,0) 66%);mix-blend-mode:screen;opacity:0.85}
+.oq-card.m-liquid::after{padding:1px;background:linear-gradient(142deg,rgba(255,255,255,0.68),rgba(255,255,255,0.10) 32%,rgba(255,255,255,0.02) 56%,rgba(255,255,255,0.38));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude}
+.oq-card.m-acrylic{background:linear-gradient(180deg,color-mix(in oklab, var(--oq-surface,#242433) 66%, transparent),color-mix(in oklab, var(--oq-canvas,#1a1a1f) 80%, transparent));-webkit-backdrop-filter:blur(38px) saturate(155%) brightness(1.10);backdrop-filter:blur(38px) saturate(155%) brightness(1.10);border-color:var(--oq-glass-border,rgba(255,255,255,0.12));box-shadow:var(--oq-glass-shadow,0 26px 52px -22px rgba(0,0,0,0.85)),inset 0 0 0 1px rgba(255,255,255,0.03),inset 0 1px 0 rgba(255,255,255,0.13)}
+.oq-card.m-acrylic::after{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");opacity:0.075;mix-blend-mode:overlay}
+.oq-overlay.m-paper{--dsw-alias-label-primary:#2a2318;--dsw-alias-label-secondary:#6b6152;--dsw-alias-label-caption:#96897a;--dsw-alias-label-tertiary:#a89b8a;--dsw-alias-bg-layer-1:rgba(120,100,70,0.05);--dsw-alias-bg-layer-2:rgba(120,100,70,0.09);--dsw-alias-border-l1:rgba(120,100,70,0.20);--dsw-alias-border-l2:rgba(120,100,70,0.30);--dsw-alias-interactive-bg-hover:rgba(120,100,70,0.10);--bmon-c1:#5d6cc4;--bmon-c2:#8f6b1e;--bmon-c3:#c2426e;--bmon-c4:#6d51c4;--bmon-h0:#ece4d1;--bmon-h1:#d9d4f0;--bmon-h2:#c1b8e6;--bmon-h3:#a699d8;--bmon-h4:#8a79c6;--bmon-h5:#7059b0;--bmon-h6:#574194}
+.oq-card.m-paper{background:linear-gradient(170deg,#fdfaf3 0%,#f7f2e6 55%,#f1ebdd 100%);border-color:rgba(120,100,70,0.20);box-shadow:inset 0 1px 0 rgba(255,255,255,0.90),0 16px 30px -16px rgba(61,50,30,0.38),0 2px 6px -2px rgba(61,50,30,0.16);-webkit-backdrop-filter:none;backdrop-filter:none}
+.oq-overlay.m-paper .oq-menu{background:#fbf7ee;border-color:rgba(120,100,70,0.22);box-shadow:0 10px 28px rgba(61,50,30,0.28);-webkit-backdrop-filter:none;backdrop-filter:none}
+.oq-overlay.m-paper .oq-menu-item.active{background:rgba(138,106,58,0.16);color:#6b4f22}
+.oq-overlay.m-liquid .oq-menu,.oq-overlay.m-acrylic .oq-menu{background:rgba(20,21,29,0.82);border-color:rgba(255,255,255,0.13);box-shadow:0 14px 32px rgba(0,0,0,0.55),inset 0 1px 0 rgba(255,255,255,0.10);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%)}
+.oq-card.m-paper::after{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");opacity:0.05;mix-blend-mode:multiply}
+.oq-card.m-paper .oq-provider,.oq-card.m-paper .oq-detail,.oq-card.m-paper .oq-stat,.oq-card.m-paper .oq-tm-tile{background:rgba(255,255,255,0.55);border-color:rgba(120,100,70,0.16);box-shadow:inset 0 1px 0 rgba(255,255,255,0.85)}
+.oq-card.m-paper .oq-heat-cell:not(.oh-future):not(.oh-empty){background-image:none;box-shadow:inset 0 0 0 1px rgba(120,100,70,0.12)}
+.oq-card.m-paper .oq-heat-cell:not(.oh-future):not(.oh-empty):hover{box-shadow:inset 0 0 0 1px rgba(120,100,70,0.45),0 1px 4px rgba(61,50,30,0.25)}
+.oq-card.m-paper .oq-tm-ring b{text-shadow:none}
+.oq-card.m-paper .oq-tm-hbar{background:rgba(120,100,70,0.14);border-color:rgba(120,100,70,0.16);box-shadow:inset 0 1px 2px rgba(61,50,30,0.12)}
+.oq-card.m-paper .oq-chart-bar{background:rgba(120,100,70,0.10);border-color:rgba(120,100,70,0.14)}
+.oq-card.m-paper .oq-chart-grid{background-image:repeating-linear-gradient(to top,rgba(120,100,70,0.16) 0 1px,transparent 1px 44px)}
+.oq-card.m-paper .oq-stack,.oq-card.m-paper .oq-podium .bar,.oq-card.m-paper .oq-r2 .bar,.oq-card.m-paper .oq-tl .tok,.oq-card.m-paper .oq-recbar .b,.oq-card.m-paper .oq-tinybar{background:rgba(120,100,70,0.14)}
+.oq-card.m-paper .oq-tl::before{background:rgba(120,100,70,0.22)}
+.oq-card.m-paper .oq-tl .it::before{box-shadow:0 0 0 2px rgba(247,242,230,1)}
+.oq-card.m-paper .oq-provider-icon svg circle[stroke='rgba(255,255,255,0.08)']{stroke:rgba(120,100,70,0.20)}
+.oq-card.m-paper .oq-provider-icon svg circle[stroke='rgba(127,127,127,0.28)']{stroke:rgba(120,100,70,0.22)}
+@media (prefers-reduced-motion:reduce){.oq-card.m-liquid,.oq-card.m-acrylic{-webkit-backdrop-filter:none;backdrop-filter:none}.oq-card.m-liquid{background:linear-gradient(170deg,rgba(32,32,44,0.94),rgba(20,20,28,0.96))}.oq-card.m-acrylic{background:linear-gradient(180deg,rgba(38,40,52,0.94),rgba(24,26,34,0.96))}}
+.oq-card.m-liquid .oq-provider,.oq-card.m-liquid .oq-detail,.oq-card.m-liquid .oq-stat,.oq-card.m-liquid .oq-tm-tile,.oq-card.m-acrylic .oq-provider,.oq-card.m-acrylic .oq-detail,.oq-card.m-acrylic .oq-stat,.oq-card.m-acrylic .oq-tm-tile{background:color-mix(in oklab, var(--oq-ink,#fff) 4%, transparent);border-color:var(--oq-hairline,rgba(255,255,255,0.08))}
+.oq-body{padding:2px 5px 4px;display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden}
+.oq-carousel{position:relative;overflow:hidden;touch-action:pan-y;min-height:auto;transition:height 0.22s cubic-bezier(0.22,1,0.36,1)}
+.oq-provider{width:100%;min-width:0;max-width:100%;overflow:hidden}
+.oq-track{display:flex;align-items:flex-start;transition:transform 0.32s cubic-bezier(0.22,1,0.36,1);will-change:transform}
+.oq-slide{flex:0 0 100%;min-width:0;box-sizing:border-box;padding:1px}
+.oq-provider{padding:5px 7px;border-radius:10px;background:var(--oq-surface,#242433);border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,0.06));display:flex;gap:8px;align-items:center;box-sizing:border-box}
+.oq-menu{position:fixed;min-width:140px;max-width:220px;background:var(--dsw-alias-bg-layer-2,#1e1e28);border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,0.1));border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:1001;overflow:hidden;overflow-y:auto;max-height:min(70vh,360px);padding:4px;backdrop-filter:blur(12px);overscroll-behavior:contain}
+.oq-menu-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--oq-muted,#a0a0b0);transition:background 0.12s}
+.oq-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,0.06));color:var(--oq-ink,#fff)}
+.oq-menu-item.active{background:color-mix(in oklab, var(--oq-accent,#cc785c) 15%, transparent);color:var(--oq-accent,#cc785c)}
+.oq-menu-dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:0.6;flex:none}
+.oq-menu-item.active .oq-menu-dot{opacity:1}
+.oq-menu-check{margin-left:auto;font-size:11px;opacity:0.9}
+.oq-menu-sep{height:1px;background:var(--dsw-alias-border-l1,rgba(255,255,255,0.06));margin:4px 0}
+.oq-provider-icon{width:28px;height:28px;border-radius:8px;flex:none;position:relative;display:inline-flex;align-items:center;justify-content:center;overflow:hidden}
+.oq-provider-icon svg{transform:rotate(-90deg)}
+.oq-provider-icon-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:750;color:var(--oq-ink,#fff)}
+.oq-provider-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.oq-provider-title{font-size:12px;font-weight:650;color:var(--oq-ink,#fff);line-height:1.2;display:flex;gap:4px;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oq-provider-sub{font-size:11px;color:var(--oq-muted,#a0a0b0);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oq-badge{font-size:9px;padding:1px 5px;border-radius:999px;background:var(--oq-canvas,#1a1a1f);color:var(--oq-accent-text,#a9583e);border:1px solid var(--oq-accent-line,#f0cfc3);line-height:1.4}
+.oq-badge.live{background:rgba(52,211,153,0.12);color:#10b981;border-color:rgba(52,211,153,0.2)}
+.oq-badge.warn{background:rgba(245,158,11,0.14);color:#d97706;border-color:rgba(245,158,11,0.2)}
+.oq-badge.err{background:var(--oq-canvas,#1a1a1f);color:var(--oq-danger,#c64545);border-color:color-mix(in oklab, var(--oq-danger,#c64545) 34%, transparent)}
+.oq-tinybar{height:4px;border-radius:999px;background:var(--oq-canvas,#1a1a1f);overflow:hidden;margin-top:3px;display:flex;gap:1px}
+.oq-tinybar-seg{height:100%;border-radius:999px;transition:width 0.3s ease}
+.oq-detail{padding:8px 8px 6px;border-radius:10px;background:var(--oq-surface,#242433);border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,0.06));display:flex;flex-direction:column;gap:6px}
+.oq-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.oq-stat{padding:6px 8px;border-radius:8px;background:var(--oq-canvas,#1a1a1f);border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,0.06))}
+.oq-stat b{font-size:13px;font-weight:750;color:var(--oq-ink,#fff);display:block;line-height:1.1}
+.oq-stat span{font-size:10px;color:var(--oq-faint,#9a9aaa)}
+@keyframes oq-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.oq-spin{width:12px;height:12px;border:2px solid var(--dsw-alias-border-l1,rgba(255,255,255,0.15));border-top-color:var(--oq-accent,#cc785c);border-radius:50%;animation:oq-spin 0.8s linear infinite;display:inline-block}
+.oq-chart{overflow-x:auto;overflow-y:hidden;padding:6px 2px}
+.oq-chart-cols{display:flex;align-items:flex-end;gap:6px;min-height:110px}
+.oq-chart-col{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:34px}
+.oq-chart-bar{width:30px;border-radius:6px 6px 3px 3px;overflow:hidden;display:flex;flex-direction:column-reverse;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.06)}
+.oq-chart-seg{width:100%;transition:height 0.25s ease}
+.oq-chart-label{font-size:9px;color:var(--oq-faint,#9a9aaa);white-space:nowrap}
+.oq-chart-grid{background-image:repeating-linear-gradient(to top,rgba(255,255,255,0.09) 0 1px,transparent 1px 44px);background-repeat:no-repeat}
+.oq-chart-foot{display:flex;justify-content:flex-end;margin-top:2px}
+.oq-line-x{display:flex;gap:2px;font-size:9px;color:var(--oq-faint,#9a9aaa);margin-top:2px}
+.oq-line-x span{flex:1;min-width:0;text-align:center;overflow:hidden;white-space:nowrap}
+.oq-rec-dur{flex:none;min-width:44px;text-align:right;color:var(--oq-faint,#9a9aaa);font-variant-numeric:tabular-nums}
+.oq-num{font-variant-numeric:tabular-nums}
+.oq-cap{font-size:10px;color:var(--oq-faint,#9a9aaa)}
+.oq-ov-top{display:flex;align-items:center;gap:14px}
+.oq-ov-big{font-size:30px;font-weight:750;letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums}
+.oq-ov-big em{font-style:normal;font-size:13px;font-weight:600;color:var(--oq-muted,#a0a0b0);margin-left:2px}
+.oq-ov-lbl{font-size:10px;color:var(--oq-faint,#9a9aaa);margin-top:2px}
+.oq-ov-sub{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;color:var(--oq-muted,#a0a0b0);font-variant-numeric:tabular-nums}
+.oq-ring{position:relative;display:inline-block;flex:none}
+.oq-ring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-variant-numeric:tabular-nums}
+.oq-stack{display:flex;height:12px;border-radius:6px;overflow:hidden;background:rgba(255,255,255,0.06);margin:13px 0 4px}
+.oq-stack span{height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.oq-stack span i{font-style:normal;font-size:9px;font-weight:700;color:rgba(255,255,255,0.92)}
+.oq-stack-lbl{display:flex;justify-content:space-between;font-size:10px;font-variant-numeric:tabular-nums}
+.oq-kpis{display:grid;grid-template-columns:repeat(4,1fr);margin-top:11px;padding-top:9px;border-top:1px solid var(--oq-hairline,rgba(255,255,255,0.08))}
+.oq-kpis>div{text-align:center;position:relative}
+.oq-kpis>div+div::before{content:'';position:absolute;left:0;top:2px;bottom:2px;width:1px;background:var(--oq-hairline,rgba(255,255,255,0.08))}
+.oq-kpis b{display:block;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.oq-kpis i{font-style:normal;font-size:10px;color:var(--oq-faint,#9a9aaa)}
+.oq-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.oq-tile{background:var(--oq-canvas,#1a1a1f);border:1px solid var(--oq-hairline,rgba(255,255,255,0.08));border-radius:10px;padding:9px 10px;min-width:0}
+.oq-tile .k{font-size:10px;color:var(--oq-faint,#9a9aaa)}
+.oq-tile .v{font-size:19px;font-weight:750;margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.oq-tile .p{font-size:9px;color:var(--oq-faint,#9a9aaa);margin-top:3px}
+.oq-ov-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.oq-ov-row .big{font-size:22px;font-weight:750;font-variant-numeric:tabular-nums}
+.oq-ax text{font-size:8px;fill:var(--oq-faint,#9a9aaa)}
+.oq-ax line{stroke:var(--oq-hairline,rgba(255,255,255,0.08));stroke-width:.6}
+.oq-bar-hit{cursor:pointer}
+.oq-bar-hit.dim{opacity:.28}
+.oq-chart-sum{display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:var(--oq-faint,#9a9aaa);margin-bottom:8px}
+.oq-chart-sum b{color:var(--oq-ink,#fff);font-size:12px;font-variant-numeric:tabular-nums}
+.oq-podium{background:var(--oq-canvas,#1a1a1f);border:1px solid var(--oq-hairline,rgba(255,255,255,0.08));border-radius:10px;padding:10px 12px;margin-bottom:5px}
+.oq-podium .nm{font-size:14px;font-weight:700}
+.oq-podium .v{font-size:18px;font-weight:750;float:right;font-variant-numeric:tabular-nums}
+.oq-podium .bar{height:8px;border-radius:4px;background:rgba(255,255,255,0.06);margin:8px 0 6px;overflow:hidden}
+.oq-podium .bar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)}
+.oq-podium .meta{font-size:10px;color:var(--oq-faint,#9a9aaa)}
+.oq-tbl{font-size:10px}
+.oq-tbl .th,.oq-tbl .tr{display:grid;grid-template-columns:20px minmax(0,1fr) 116px 62px 44px;gap:8px;align-items:center}
+.oq-tbl .th{color:var(--oq-faint,#9a9aaa);font-size:9px;padding:3px 0 5px;border-bottom:1px solid var(--oq-hairline,rgba(255,255,255,0.08))}
+.oq-tbl .tr{padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.oq-tbl .tr:nth-child(even){background:rgba(255,255,255,0.015)}
+.oq-tbl .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.oq-tbl .n{text-align:right;font-variant-numeric:tabular-nums}
+.oq-tbl .n.strong{font-weight:700;color:var(--oq-ink,#fff)}
+.oq-r2{padding:6px 0;cursor:pointer;border-radius:6px}
+.oq-r2:hover{background:rgba(139,123,255,0.06)}
+.oq-r2 .r1{display:flex;align-items:baseline;gap:8px;min-width:0}
+.oq-r2 .idx{width:16px;flex:none;font-size:9px;color:var(--oq-faint,#9a9aaa);font-variant-numeric:tabular-nums;text-align:right}
+.oq-r2 .idx.top{color:var(--oq-accent,#cc785c);font-weight:700}
+.oq-r2 .nm{flex:1;min-width:0;font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oq-r2 .pc{font-size:10px;color:var(--oq-muted,#a0a0b0);font-variant-numeric:tabular-nums}
+.oq-r2 .vv{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.oq-r2 .bar{height:6px;border-radius:3px;background:rgba(255,255,255,0.06);margin-top:4px;overflow:hidden}
+.oq-r2 .bar i{display:block;height:100%;border-radius:3px}
+.oq-r2 .meta{font-size:9px;color:var(--oq-faint,#9a9aaa);margin-top:3px}
+.oq-gauge{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.oq-gauge .side{font-size:11px;color:var(--oq-muted,#a0a0b0);line-height:1.9;font-variant-numeric:tabular-nums}
+.oq-gauge .side b{color:var(--oq-ink,#fff)}
+.oq-live-big{font-size:19px;font-weight:750;font-variant-numeric:tabular-nums}
+.oq-live-big span{font-size:10px;color:var(--oq-faint,#9a9aaa);font-weight:500;margin-left:4px}
+.oq-kpi5{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--oq-hairline,rgba(255,255,255,0.08));margin-top:10px;padding-top:9px}
+.oq-kpi5>div{text-align:center;position:relative;min-width:0}
+.oq-kpi5>div+div::before{content:'';position:absolute;left:0;top:2px;bottom:2px;width:1px;background:var(--oq-hairline,rgba(255,255,255,0.08))}
+.oq-kpi5 b{display:block;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.oq-kpi5 i{font-style:normal;font-size:9px;color:var(--oq-faint,#9a9aaa);display:block;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oq-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.oq-tl{position:relative;padding-left:14px}
+.oq-tl::before{content:'';position:absolute;left:3.5px;top:6px;bottom:6px;width:1px;background:rgba(255,255,255,0.12)}
+.oq-tl .it{position:relative;padding:5px 0;cursor:pointer}
+.oq-tl .it::before{content:'';position:absolute;left:-14px;top:9px;width:7px;height:7px;border-radius:50%;background:var(--oq-accent,#cc785c);box-shadow:0 0 0 2px var(--dsw-alias-bg-layer-1,#1a1b22)}
+.oq-tl .l1{display:flex;align-items:baseline;gap:8px;font-size:11px;min-width:0}
+.oq-tl .t{color:var(--oq-faint,#9a9aaa);font-size:10px;width:56px;flex:none;font-variant-numeric:tabular-nums}
+.oq-tl .m{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oq-tl .d{color:var(--oq-faint,#9a9aaa);font-size:10px;font-variant-numeric:tabular-nums}
+.oq-tl .l2{display:flex;align-items:center;gap:8px;font-size:9px;color:var(--oq-faint,#9a9aaa);margin-left:64px;margin-top:1px}
+.oq-tl .tok{display:flex;height:5px;width:110px;border-radius:3px;overflow:hidden;background:rgba(255,255,255,0.06);flex:none}
+.oq-tl .tok i{height:100%}
+.oq-recbar{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:10px;cursor:pointer}
+.oq-recbar .w{width:44px;color:var(--oq-faint,#9a9aaa);font-variant-numeric:tabular-nums;flex:none}
+.oq-recbar .m{width:104px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.oq-recbar .b{flex:1;height:8px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,0.06);display:flex}
+.oq-recbar .b i{height:100%}
+.oq-style-row{display:flex;align-items:center;gap:10px;padding:4px 0;flex-wrap:wrap}
+.oq-style-row .nm{width:64px;flex:none;font-size:11px;color:var(--oq-muted,#a0a0b0)}
+.oq-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.oq-legend-item{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--oq-faint,#9a9aaa)}
+.oq-legend-dot{width:8px;height:8px;border-radius:2px;flex:none}
+.oq-tm-head{display:flex;align-items:center;gap:6px;width:100%}
+.oq-tm-title{font-size:12px;font-weight:700;color:var(--oq-ink,#fff);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.oq-tm-total{font-size:11px;font-weight:700;color:var(--oq-ink,#fff);white-space:nowrap;flex:none}
+.oq-tm-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%;box-sizing:border-box}
+.oq-tm-tile{background:var(--oq-canvas,#1a1a1f);border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,0.06));border-radius:8px;padding:6px 7px;display:flex;flex-direction:column;gap:2px;min-width:0;box-sizing:border-box}
+.oq-tm-tile-label{font-size:10px;line-height:1.2;color:var(--dsw-alias-label-primary,#f0f0f5);font-weight:700;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oq-tm-tile-value{font-size:13px;font-weight:760;line-height:1.15;color:var(--oq-ink,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oq-tm-tile-value small{font-size:10px;font-weight:500;color:var(--oq-faint,#9a9aaa);margin-left:3px}
+.oq-tm-tile-sub{font-size:10px;line-height:1.25;color:var(--oq-muted,#a0a0b0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oq-tm-ring{position:relative;flex:none;display:inline-flex;align-items:center;justify-content:center}
+.oq-tm-ring svg{display:block}
+.oq-tm-ring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;letter-spacing:-0.4px;font-variant-numeric:tabular-nums;line-height:1;pointer-events:none}
+.oq-tm-empty{font-size:11px;color:var(--oq-faint,#9a9aaa);padding:6px 2px;line-height:1.5}
+.oq-tm-foot{margin-top:1px;font-size:10px;color:var(--oq-faint,#9a9aaa);display:flex;justify-content:space-between;gap:8px}
+.oq-tm-hbar{height:8px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.06);box-shadow:inset 0 1px 2px rgba(0,0,0,0.2);overflow:hidden;position:relative;padding:1px;box-sizing:border-box;flex:1}
+.oq-tm-hbar-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#c65f7f 0%,#ff8fab 100%);box-shadow:0 0 8px rgba(198,95,127,0.4);position:relative;overflow:hidden;width:0%}
+.oq-tm-hbar-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.28),transparent);transform:translateX(-100%);animation:oq-shimmer 2s infinite}
+@keyframes oq-shimmer{100%{transform:translateX(100%)}}
+@keyframes oq-pulse{0%{box-shadow:0 0 0 0 rgba(16,185,129,0.45)}70%{box-shadow:0 0 0 6px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
+.oq-heat{display:flex;flex-direction:column;gap:2px;margin:0 -5px;padding:0 5px}
+.oq-heat-week{display:flex;gap:2px}
+.oq-heat-cell{flex:1;min-width:3px;height:8px;border-radius:4px;background-color:var(--bmon-h0,#252831);background-image:linear-gradient(180deg,rgba(255,255,255,0.22) 0%,rgba(255,255,255,0.05) 45%,rgba(0,0,0,0.20) 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),inset 0 -1px 1px rgba(0,0,0,0.35),0 1px 2px rgba(0,0,0,0.40);cursor:default;position:relative}
+.oq-heat-cell:hover{z-index:1;box-shadow:inset 0 1px 0 rgba(255,255,255,0.30),inset 0 -1px 1px rgba(0,0,0,0.30),0 0 0 1px rgba(255,255,255,0.55),0 2px 8px rgba(0,0,0,0.50)}
+.oq-heat-cell.oh1{background-color:var(--bmon-h1,#c8c6ee)}.oq-heat-cell.oh2{background-color:var(--bmon-h2,#a9a4e6)}.oq-heat-cell.oh3{background-color:var(--bmon-h3,#8b83dd)}.oq-heat-cell.oh4{background-color:var(--bmon-h4,#7066cf)}.oq-heat-cell.oh5{background-color:var(--bmon-h5,#5749ba)}.oq-heat-cell.oh6{background-color:var(--bmon-h6,#443699)}
+.oq-heat-cell.oh-empty{background:none;box-shadow:none;visibility:hidden}
+.oq-heat-cell.oh-sel{outline:2px solid var(--oq-accent,#cc785c);outline-offset:1px}
+.oq-heat-cell.oh-clickable{cursor:pointer}
+.oq-heat-cell.oh-clickable:hover{filter:brightness(1.12)}
+.oq-heat-cell.oh-future{background:repeating-linear-gradient(45deg,rgba(154,154,170,0.30) 0 2px,rgba(154,154,170,0.06) 2px 5px)}
+.oq-heat-cell.oh-today{box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),inset 0 -1px 1px rgba(0,0,0,0.35),0 1px 2px rgba(0,0,0,0.40),0 0 0 1.2px rgba(139,123,255,0.55)}
+.oq-heat-cell.oh-el{transform-origin:left center}
+.oq-heat-cell.oh-er{transform-origin:right center}
+.oq-heat-cell.oh-el:hover,.oq-heat-cell.oh-er:hover{box-shadow:inset 0 1px 0 rgba(255,255,255,0.30),inset 0 -1px 1px rgba(0,0,0,0.30),inset 0 0 0 1px rgba(255,255,255,0.55),0 2px 8px rgba(0,0,0,0.50)}
+.oq-heat-cell.oh-el.oh-today,.oq-heat-cell.oh-er.oh-today{box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),inset 0 -1px 1px rgba(0,0,0,0.35),0 1px 2px rgba(0,0,0,0.40),inset 0 0 0 1.2px rgba(139,123,255,0.55)}
+@keyframes oq-breathe{0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),inset 0 -1px 1px rgba(0,0,0,0.35),0 1px 2px rgba(0,0,0,0.40),0 0 0 1.2px rgba(139,123,255,0.55),0 0 0 0 rgba(139,123,255,0)}50%{box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),inset 0 -1px 1px rgba(0,0,0,0.35),0 1px 2px rgba(0,0,0,0.40),0 0 0 1.9px rgba(139,123,255,0.80),0 0 5px 0 rgba(139,123,255,0.22)}}
+@keyframes oq-breathe-in{0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),inset 0 -1px 1px rgba(0,0,0,0.35),0 1px 2px rgba(0,0,0,0.40),inset 0 0 0 1.2px rgba(139,123,255,0.55),inset 0 0 0 0 rgba(139,123,255,0)}50%{box-shadow:inset 0 1px 0 rgba(255,255,255,0.25),inset 0 -1px 1px rgba(0,0,0,0.35),0 1px 2px rgba(0,0,0,0.40),inset 0 0 0 1.9px rgba(139,123,255,0.80),inset 0 0 4px 0 rgba(139,123,255,0.26)}}
+.oq-heat-cell.oh-today{animation:oq-breathe 3s ease-in-out infinite}
+.oq-heat-cell.oh-el.oh-today,.oq-heat-cell.oh-er.oh-today{animation-name:oq-breathe-in}
+@media (prefers-reduced-motion:reduce){.oq-heat-cell.oh-today{animation:none}}
+.oq-tip,.oq-heat-tip{position:fixed;z-index:1002;pointer-events:none;opacity:0;background:var(--dsw-alias-bg-layer-2,#1e1e28);border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,0.1));border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.45);padding:8px 10px;font-size:10px;line-height:1.5;color:var(--oq-ink,#fff);min-width:132px;max-width:260px}
+.oq-tip .tt-head,.oq-heat-tip .tt-head{font-size:9px;color:var(--oq-faint,#9a9aaa);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oq-tip .tt-main,.oq-heat-tip .tt-main{font-size:14px;font-weight:750;margin-bottom:4px;white-space:nowrap}
+.oq-tip .tt-row,.oq-heat-tip .tt-row{display:flex;justify-content:space-between;gap:12px;color:var(--oq-muted,#a0a0b0);white-space:nowrap}
+.oq-tip .tt-row b,.oq-heat-tip .tt-row b{color:var(--oq-ink,#fff);fontWeight:600}
+.oq-tip .tt-lv,.oq-heat-tip .tt-lv{display:flex;gap:3px;margin-top:5px;align-items:center}
+.oq-tip .tt-lv i,.oq-heat-tip .tt-lv i{width:7px;height:7px;border-radius:2px;display:inline-block}
+.oq-tip .tt-div{border-top:1px solid rgba(255,255,255,0.08);margin:5px 0 3px}
+.oq-tip .tt-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex:none}
+.oq-tip .tt-k{min-width:0;overflow:hidden;text-overflow:ellipsis;display:inline-flex;align-items:center;gap:4px}
+.oq-tip .tt-v{flex:none}
+.oq-tip .tt-foot{font-size:9px;color:var(--oq-faint,#9a9aaa);margin-top:5px;line-height:1.35}
+.oq-heat-days{display:flex;gap:2px;margin-top:1px}
+.oq-heat-days span{flex:1;font-size:8px;color:var(--oq-faint,#9a9aaa);text-align:center;line-height:1.2;overflow:hidden;white-space:nowrap}
+.oq-heat-foot{font-size:9px;color:var(--oq-faint,#9a9aaa);margin-top:2px;line-height:1.3}
+.oq-tabs{display:flex;align-items:stretch;gap:4px;flex-wrap:nowrap;margin-top:10px;padding:4px;border:1px solid var(--oq-hairline);border-radius:10px;background:var(--oq-surface)}
+.oq-tab{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;color:var(--oq-faint);font-family:inherit;font-size:10.5px;font-weight:500;line-height:1.2;cursor:pointer;background:none;border:1px solid transparent;border-radius:8px;padding:7px 3px 6px;transition:background .14s ease,color .14s ease,border-color .14s ease}
+.oq-tab svg{opacity:.72;transition:opacity .14s ease;flex:none}
+.oq-tab:hover{background:var(--oq-surface-2);color:var(--oq-body)}
+.oq-tab:hover svg{opacity:1}
+.oq-tab[data-active='1']{background:color-mix(in oklab, var(--oq-accent) 14%, transparent);border-color:color-mix(in oklab, var(--oq-accent) 38%, transparent);color:var(--oq-accent);font-weight:600}
+.oq-tab[data-active='1'] svg{opacity:1}
+@media (max-width:560px){.oq-tab{font-size:0;gap:0;padding:8px 3px}.oq-tab svg{opacity:.9}}
+.oq-hm-lg .oq-heat-cell{height:20px;border-radius:6px;min-width:3px}
+.oq-rank-row{display:flex;align-items:center;gap:10px;font-size:11px;line-height:1.7}
+.oq-rank-name{width:34%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--oq-muted,#a0a0b0)}
+.oq-rank-track{flex:1;height:6px;border-radius:999px;background:var(--oq-canvas,#1a1a1f);overflow:hidden}
+.oq-rank-fill{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)}
+.oq-rank-val{flex:none;min-width:52px;text-align:right;color:var(--oq-muted,#a0a0b0);font-variant-numeric:tabular-nums}
+.oq-rec-row{display:flex;align-items:center;gap:10px;font-size:11px;line-height:2;color:var(--oq-muted,#a0a0b0)}
+.oq-rec-time{flex:none;color:var(--oq-faint,#9a9aaa);font-variant-numeric:tabular-nums}
+.oq-rec-model{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--oq-ink,#fff)}
+.oq-rec-tok{flex:none;font-variant-numeric:tabular-nums}
+[]>svg{display:none}
+[]::before{content:'';flex:none;width:16px;height:16px;background:currentColor;-webkit-mask:url("data:image/svg+xml,") center/contain no-repeat;mask:url("data:image/svg+xml,") center/contain no-repeat}
+.oq-page{box-sizing:border-box;height:100%;display:flex;flex-direction:column;align-items:center;gap:20px;overflow-y:auto;overscroll-behavior:contain;padding:28px clamp(24px,4vw,48px) 48px;background:var(--oq-canvas,#1a1a1f);color:var(--oq-ink,#fff)}
+[data-platform=darwin] .oq-page{padding-top:calc(28px + var(--dsh-frame-top-clearance,0px))}
+.oq-page>*{width:100%;max-width:960px}
+.oq-page-hero{position:relative;width:100%;max-width:920px;background:var(--oq-hero-bg,#181715);border:1px solid var(--oq-hero-hairline,rgba(255,255,255,.12));border-radius:14px;padding:22px 24px;color:var(--oq-hero-ink,#faf9f5);box-shadow:0 10px 30px -18px rgba(0,0,0,.55)}
+.oq-page-hero::after{content:'';position:absolute;top:20px;right:26px;width:7px;height:7px;border-radius:50%;background:#cc785c;box-shadow:-16px 24px 0 -1px rgba(232,165,90,.72),10px 30px 0 -2px rgba(93,184,166,.62);pointer-events:none}
+.oq-page-kicker{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--oq-hero-muted,#a09d96);margin-bottom:7px}
+.oq-page-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px;position:relative;z-index:1}
+.oq-page-title{margin:0;font-size:22px;font-weight:500;line-height:1.3;letter-spacing:-.3px;color:var(--oq-hero-ink,#faf9f5)}
+.oq-page-sub{margin:6px 0 0;font-size:12px;line-height:1.55;color:var(--oq-hero-muted,#a09d96)}
+.oq-page-toggle{flex:none;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:var(--dsw-radius-sm,8px);border:1px solid var(--oq-hairline,rgba(255,255,255,0.08));background:none;color:var(--oq-muted,#a0a0b0);font-family:inherit;font-size:12px;cursor:pointer}
+.oq-page-toggle:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(255,255,255,0.06));color:var(--oq-ink,#fff)}
+.oq-page-toggle .oq-page-toggle-dot{width:6px;height:6px;border-radius:50%;background:var(--oq-faint,#9a9aaa);flex:none}
+.oq-page-toggle[data-on='1']{color:var(--oq-ink,#fff)}
+.oq-page-toggle[data-on='1'] .oq-page-toggle-dot{background:#34d399}
+.oq-page{flex:1;gap:12px;padding:15px}
+.oq-page-hero{padding:15px 18px}
+</style></head>
+<body>
+<div class="head">
+  <h1>插件真实 CSS · 珊瑚统一版</h1>
+  <p>强调色、语义色、状态色、排行渐变已全部统一到珊瑚暖族。<b>排行渐变改为珊瑚 → 琥珀</b>（原来是紫 → 青）。
+  CSS 从 <code>lib/client.js</code> 求值导出，左右仅注入不同宿主变量。</p>
+</div>
+<div class="grid">
+  <div class="wrap"><div class="lb">host: dark</div><div class="host" data-dsw="dark">
+  <div class="oq-page">
+    <div class="oq-page-hero"><div class="oq-page-head">
+      <div>
+        <div class="oq-page-kicker">Dsh Quota Widget</div>
+        <h1 class="oq-page-title">用量与额度</h1>
+        <p class="oq-page-sub">Token 用量统计 · Opencode / DeepSeek / R4Coder 额度一览</p>
+      </div>
+      <button class="oq-page-toggle" data-on="1"><span class="oq-page-toggle-dot"></span>悬浮窗显示中</button>
+    </div></div>
+
+    <div class="oq-tabs"><button class="oq-tab" data-active="1">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 12V7M6 12V4M10 12V9M14 12V2"/></svg>
+       <span>用量统计</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+       <span>用量查询</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2.6" width="12" height="10.8" rx="2"/><path d="M2 6h12"/></svg>
+       <span>外观</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><ellipse cx="8" cy="4" rx="5.4" ry="2.2"/><path d="M2.6 4v8"/></svg>
+       <span>数据源</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.3"/></svg>
+       <span>通用</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.4 2.2a3.6 3.6 0 004.4 4.7l-8 8a2.2 2.2 0 01-3.1-3.1z"/></svg>
+       <span>维护</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 5.6h12M2 10.4h12"/></svg>
+       <span>网关</span></button></div>
+
+    <div style="width:100%;max-width:920px;display:flex;flex-direction:column;gap:13px">
+
+      <div class="oq-card" style="position:relative;width:100%;max-width:none;cursor:default;background:var(--oq-surface)">
+        <div style="padding:16px 18px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:12px;color:var(--oq-muted);margin-bottom:4px">总览 · 近 90 天</div>
+              <div style="font-size:30px;font-weight:600;letter-spacing:-1px;color:var(--oq-ink);font-variant-numeric:tabular-nums">6.86B<span style="font-size:14px;color:var(--oq-muted);margin-left:3px">tokens</span></div>
+              <div style="font-size:11px;color:var(--oq-muted);margin-top:5px">日均 285.8M · 环比 —</div>
+            </div>
+            <div style="text-align:center">
+              <div style="width:48px;height:48px;border-radius:50%;border:3px solid var(--oq-accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--oq-ink)">95%</div>
+              <div style="font-size:9px;color:var(--oq-muted);margin-top:4px">缓存命中率</div>
+            </div>
+          </div>
+          <div style="display:flex;height:9px;border-radius:5px;overflow:hidden;margin:14px 0 6px;gap:1px">
+            <span style="width:4.7%;background:var(--oq-sem-fresh)"></span>
+            <span style="width:95%;background:var(--oq-sem-cache)"></span>
+            <span style="width:0.3%;background:var(--oq-sem-out)"></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:10px">
+            <span style="color:var(--oq-sem-fresh)">新输入 4.7%</span>
+            <span style="color:var(--oq-sem-cache)">缓存读 95.0%</span>
+            <span style="color:var(--oq-sem-out)">输出 0.3%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="oq-card" style="position:relative;width:100%;max-width:none;cursor:default;background:var(--oq-surface)">
+        <div style="padding:15px 18px">
+          <div style="font-size:11px;color:var(--oq-muted);margin-bottom:9px">模型排行（暖渐变：珊瑚 → 琥珀）</div>
+          
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+              <span style="width:16px;font-size:10px;color:var(--oq-faint);font-variant-numeric:tabular-nums">01</span>
+              <span style="width:92px;font-size:11px;color:var(--oq-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">u2-flash</span>
+              <span style="flex:1;height:6px;border-radius:999px;background:var(--oq-track);overflow:hidden">
+                <span style="display:block;height:100%;width:100%;border-radius:999px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)"></span>
+              </span>
+              <span style="width:52px;text-align:right;font-size:10px;color:var(--oq-muted);font-variant-numeric:tabular-nums">357.7M</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+              <span style="width:16px;font-size:10px;color:var(--oq-faint);font-variant-numeric:tabular-nums">02</span>
+              <span style="width:92px;font-size:11px;color:var(--oq-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">step-5-preview</span>
+              <span style="flex:1;height:6px;border-radius:999px;background:var(--oq-track);overflow:hidden">
+                <span style="display:block;height:100%;width:62%;border-radius:999px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)"></span>
+              </span>
+              <span style="width:52px;text-align:right;font-size:10px;color:var(--oq-muted);font-variant-numeric:tabular-nums">182.6M</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+              <span style="width:16px;font-size:10px;color:var(--oq-faint);font-variant-numeric:tabular-nums">03</span>
+              <span style="width:92px;font-size:11px;color:var(--oq-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">deepseek-flash</span>
+              <span style="flex:1;height:6px;border-radius:999px;background:var(--oq-track);overflow:hidden">
+                <span style="display:block;height:100%;width:34%;border-radius:999px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)"></span>
+              </span>
+              <span style="width:52px;text-align:right;font-size:10px;color:var(--oq-muted);font-variant-numeric:tabular-nums">39.6M</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+              <span style="width:16px;font-size:10px;color:var(--oq-faint);font-variant-numeric:tabular-nums">04</span>
+              <span style="width:92px;font-size:11px;color:var(--oq-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">qwen3-coder</span>
+              <span style="flex:1;height:6px;border-radius:999px;background:var(--oq-track);overflow:hidden">
+                <span style="display:block;height:100%;width:18%;border-radius:999px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)"></span>
+              </span>
+              <span style="width:52px;text-align:right;font-size:10px;color:var(--oq-muted);font-variant-numeric:tabular-nums">18.2M</span>
+            </div>
+        </div>
+      </div>
+
+      <div class="oq-card" style="position:relative;width:100%;max-width:none;cursor:default;background:var(--oq-surface)">
+        <div style="padding:15px 18px">
+          <div style="font-size:11px;color:var(--oq-muted);margin-bottom:9px">按钮 / 徽标 / 状态</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button style="padding:6px 14px;border-radius:8px;border:1px solid var(--oq-accent);background:var(--oq-accent);color:var(--oq-accent-ink);font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer">主按钮</button>
+            <button style="padding:6px 14px;border-radius:8px;border:1px solid var(--oq-hairline-strong);background:transparent;color:var(--oq-ink);font-size:11.5px;font-family:inherit;cursor:pointer">次按钮</button>
+            <span class="oq-badge">徽标</span>
+            <span class="oq-badge err">错误</span>
+          </div>
+          <div style="display:flex;gap:12px;margin-top:11px;font-size:10px">
+            <span style="color:#10b981">● 直连 Live</span>
+            <span style="color:#e8a55a">● 网关 Live</span>
+            <span style="color:#22d3ee">● 两者 Live</span>
+            <span style="margin-left:auto;color:var(--oq-danger)">危险操作</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="oq-card" style="position:relative;width:100%;max-width:none;cursor:default;background:var(--oq-surface-2)">
+        <div style="padding:13px 18px">
+          <div style="font-size:10px;color:var(--oq-muted);margin-bottom:7px">热力色阶 h0 → h6</div>
+          <div style="display:flex;gap:4px">
+            <div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h0)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h1)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h2)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h3)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h4)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h5)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h6)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+  <div class="wrap"><div class="lb">host: light</div><div class="host" data-dsw="light">
+  <div class="oq-page">
+    <div class="oq-page-hero"><div class="oq-page-head">
+      <div>
+        <div class="oq-page-kicker">Dsh Quota Widget</div>
+        <h1 class="oq-page-title">用量与额度</h1>
+        <p class="oq-page-sub">Token 用量统计 · Opencode / DeepSeek / R4Coder 额度一览</p>
+      </div>
+      <button class="oq-page-toggle" data-on="1"><span class="oq-page-toggle-dot"></span>悬浮窗显示中</button>
+    </div></div>
+
+    <div class="oq-tabs"><button class="oq-tab" data-active="1">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 12V7M6 12V4M10 12V9M14 12V2"/></svg>
+       <span>用量统计</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+       <span>用量查询</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2.6" width="12" height="10.8" rx="2"/><path d="M2 6h12"/></svg>
+       <span>外观</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><ellipse cx="8" cy="4" rx="5.4" ry="2.2"/><path d="M2.6 4v8"/></svg>
+       <span>数据源</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.3"/></svg>
+       <span>通用</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10.4 2.2a3.6 3.6 0 004.4 4.7l-8 8a2.2 2.2 0 01-3.1-3.1z"/></svg>
+       <span>维护</span></button><button class="oq-tab">
+       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 5.6h12M2 10.4h12"/></svg>
+       <span>网关</span></button></div>
+
+    <div style="width:100%;max-width:920px;display:flex;flex-direction:column;gap:13px">
+
+      <div class="oq-card" style="position:relative;width:100%;max-width:none;cursor:default;background:var(--oq-surface)">
+        <div style="padding:16px 18px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:12px;color:var(--oq-muted);margin-bottom:4px">总览 · 近 90 天</div>
+              <div style="font-size:30px;font-weight:600;letter-spacing:-1px;color:var(--oq-ink);font-variant-numeric:tabular-nums">6.86B<span style="font-size:14px;color:var(--oq-muted);margin-left:3px">tokens</span></div>
+              <div style="font-size:11px;color:var(--oq-muted);margin-top:5px">日均 285.8M · 环比 —</div>
+            </div>
+            <div style="text-align:center">
+              <div style="width:48px;height:48px;border-radius:50%;border:3px solid var(--oq-accent);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--oq-ink)">95%</div>
+              <div style="font-size:9px;color:var(--oq-muted);margin-top:4px">缓存命中率</div>
+            </div>
+          </div>
+          <div style="display:flex;height:9px;border-radius:5px;overflow:hidden;margin:14px 0 6px;gap:1px">
+            <span style="width:4.7%;background:var(--oq-sem-fresh)"></span>
+            <span style="width:95%;background:var(--oq-sem-cache)"></span>
+            <span style="width:0.3%;background:var(--oq-sem-out)"></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:10px">
+            <span style="color:var(--oq-sem-fresh)">新输入 4.7%</span>
+            <span style="color:var(--oq-sem-cache)">缓存读 95.0%</span>
+            <span style="color:var(--oq-sem-out)">输出 0.3%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="oq-card" style="position:relative;width:100%;max-width:none;cursor:default;background:var(--oq-surface)">
+        <div style="padding:15px 18px">
+          <div style="font-size:11px;color:var(--oq-muted);margin-bottom:9px">模型排行（暖渐变：珊瑚 → 琥珀）</div>
+          
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+              <span style="width:16px;font-size:10px;color:var(--oq-faint);font-variant-numeric:tabular-nums">01</span>
+              <span style="width:92px;font-size:11px;color:var(--oq-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">u2-flash</span>
+              <span style="flex:1;height:6px;border-radius:999px;background:var(--oq-track);overflow:hidden">
+                <span style="display:block;height:100%;width:100%;border-radius:999px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)"></span>
+              </span>
+              <span style="width:52px;text-align:right;font-size:10px;color:var(--oq-muted);font-variant-numeric:tabular-nums">357.7M</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+              <span style="width:16px;font-size:10px;color:var(--oq-faint);font-variant-numeric:tabular-nums">02</span>
+              <span style="width:92px;font-size:11px;color:var(--oq-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">step-5-preview</span>
+              <span style="flex:1;height:6px;border-radius:999px;background:var(--oq-track);overflow:hidden">
+                <span style="display:block;height:100%;width:62%;border-radius:999px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)"></span>
+              </span>
+              <span style="width:52px;text-align:right;font-size:10px;color:var(--oq-muted);font-variant-numeric:tabular-nums">182.6M</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+              <span style="width:16px;font-size:10px;color:var(--oq-faint);font-variant-numeric:tabular-nums">03</span>
+              <span style="width:92px;font-size:11px;color:var(--oq-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">deepseek-flash</span>
+              <span style="flex:1;height:6px;border-radius:999px;background:var(--oq-track);overflow:hidden">
+                <span style="display:block;height:100%;width:34%;border-radius:999px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)"></span>
+              </span>
+              <span style="width:52px;text-align:right;font-size:10px;color:var(--oq-muted);font-variant-numeric:tabular-nums">39.6M</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:9px;margin-bottom:7px">
+              <span style="width:16px;font-size:10px;color:var(--oq-faint);font-variant-numeric:tabular-nums">04</span>
+              <span style="width:92px;font-size:11px;color:var(--oq-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">qwen3-coder</span>
+              <span style="flex:1;height:6px;border-radius:999px;background:var(--oq-track);overflow:hidden">
+                <span style="display:block;height:100%;width:18%;border-radius:999px;background:linear-gradient(90deg,var(--oq-accent,#cc785c),#e8a55a)"></span>
+              </span>
+              <span style="width:52px;text-align:right;font-size:10px;color:var(--oq-muted);font-variant-numeric:tabular-nums">18.2M</span>
+            </div>
+        </div>
+      </div>
+
+      <div class="oq-card" style="position:relative;width:100%;max-width:none;cursor:default;background:var(--oq-surface)">
+        <div style="padding:15px 18px">
+          <div style="font-size:11px;color:var(--oq-muted);margin-bottom:9px">按钮 / 徽标 / 状态</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button style="padding:6px 14px;border-radius:8px;border:1px solid var(--oq-accent);background:var(--oq-accent);color:var(--oq-accent-ink);font-size:11.5px;font-weight:600;font-family:inherit;cursor:pointer">主按钮</button>
+            <button style="padding:6px 14px;border-radius:8px;border:1px solid var(--oq-hairline-strong);background:transparent;color:var(--oq-ink);font-size:11.5px;font-family:inherit;cursor:pointer">次按钮</button>
+            <span class="oq-badge">徽标</span>
+            <span class="oq-badge err">错误</span>
+          </div>
+          <div style="display:flex;gap:12px;margin-top:11px;font-size:10px">
+            <span style="color:#10b981">● 直连 Live</span>
+            <span style="color:#e8a55a">● 网关 Live</span>
+            <span style="color:#22d3ee">● 两者 Live</span>
+            <span style="margin-left:auto;color:var(--oq-danger)">危险操作</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="oq-card" style="position:relative;width:100%;max-width:none;cursor:default;background:var(--oq-surface-2)">
+        <div style="padding:13px 18px">
+          <div style="font-size:10px;color:var(--oq-muted);margin-bottom:7px">热力色阶 h0 → h6</div>
+          <div style="display:flex;gap:4px">
+            <div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h0)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h1)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h2)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h3)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h4)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h5)"></div><div style="flex:1;height:24px;border-radius:4px;background:var(--bmon-h6)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+</div>
+</body></html>
