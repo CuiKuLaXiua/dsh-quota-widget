@@ -208,7 +208,7 @@ components:
 `--bmon-c1..c4`：钢蓝 #6b87d9 / 赭黄 #b08427 / 玫瑰 #c65f7f / 紫 #8d7ce4。仅用于区分模型、渠道、项目，**不暗示大小或好坏**。四色循环使用，超过 4 项走"其他"。
 
 ### 热力色阶
-`h0..h6` 从 #252831 到 #443699，同一色相（品牌紫），明度按感知均匀递进。**方向不能反过来**：界面文案写的是"颜色越深代表当天消耗越多"，所以在深色底上必须是"越多越深"，而不是"越多越亮"。浅色主题另有一套 `--bmon-h*`（#ece4d1 → #574194），由 `prefers-color-scheme` 切换，由哑光纸材质再覆盖一次。
+`h0..h6` 从 #252831 到 #443699，同一色相（品牌紫），明度按感知均匀递进。**方向不能反过来**：界面文案写的是"颜色越深代表当天消耗越多"，所以在深色底上必须是"越多越深"，而不是"越多越亮"。浅色主题另有一套 `--bmon-h*`（#ece4d1 → #574194），由 `body:not([data-ds-dark-theme])` 切换，由哑光纸材质再覆盖一次。
 
 ### Named Rules
 
@@ -217,6 +217,8 @@ components:
 **The Two Families Rule.** 品牌紫只做"可交互 / 被选中"，玫瑰只做"命中率"。把玫瑰用在按钮上、或把紫色用在命中率上，都是越界。
 
 **The Neutral Never Assumes Rule.** 任何写死的中性色值（#9a9aaa 这种）都必须带一个 `var(--dsw-alias-*, 兜底)` 前缀。裸色值意味着换材质或换主题时它会失效。
+
+**The Body-Scoped Token Rule.** 整套 `--oq-*` 派生必须声明在 `body` 上，不能挂 `:root`。宿主的 `--dsw-alias-*` 定义在 `<body>`（`body[data-ds-dark-theme]` 切深浅），而自定义属性在**声明处**求值：挂在 `:root` 上时 `var(--dsw-alias-*, 兜底)` 在 `<html>` 那层取不到 body 的值，全部退回兜底 —— 浅色皮肤下插件整体仍是深色就是这条错的。`:root` 只保留一份纯兜底（宿主变量缺失时仍有颜色）。明暗信号一律用 `body[data-ds-dark-theme]`，**不用** `prefers-color-scheme`（那是操作系统偏好，与 DSH 主题可不同步）。见 `lib/client.js` 的令牌层与 `test/theme-adaptation.test.mjs`。
 
 ## Typography
 

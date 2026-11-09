@@ -2,6 +2,87 @@
 
 ## [Unreleased]
 
+### 修复：浅色主题下设置页与悬浮窗不跟随（2026-11-09）
+
+#### 症状
+
+DSH 切到浅色皮肤后，宿主外壳是浅色，但本插件的 tab 条、范围选择条、悬浮小窗
+整体仍是黑底（用户截图确认："设置页面和悬浮面板都没有适配浅色系"）。
+
+#### 根因（不是配色表写错，是 CSS 声明位置错）
+
+宿主的 `--dsw-alias-*` 定义在 **`<body>`** 上，用 `body[data-ds-dark-theme]`
+切换深浅（官方主题呈现器写/擦该属性；`ds-bot` 与 `dsh-dream-skin` 都按
+`body` / `body[data-ds-dark-theme]` 取值，三处互证；dream-skin 的注释还留有一条
+哨兵实测记录：「rewriting the canvas token on `body` moves the …」）。
+
+本插件曾把整套 `--oq-*` 挂到 `:root`。自定义属性在**声明处**求值，所以
+`var(--dsw-alias-bg-layer-2, #1a1a1f)` 在 `<html>` 那层求值时 body 的值还不存在，
+每个 `color-mix` 都退回代码里写死的深色兜底 ⇒ 浅色皮肤下整页仍是黑的。
+
+这也解释了为什么一直"看着像写对了"：兜底值和深色主题的正常值几乎一致，
+深色下完全看不出问题。
+
+#### Changed
+
+- **令牌层改挂 `body`**（`:root` 只保留一份纯兜底，供宿主变量缺失时使用）。
+- **明暗信号改用 `body:not([data-ds-dark-theme])`**，不再用
+  `prefers-color-scheme` —— 后者读的是操作系统偏好，与 DSH 自己的主题状态无关，
+  正是「系统浅色 + DSH 深色」错配的来源。
+- **hero 带改为跟主题翻转**：深色主题仍是暖黑压顶 `#181715` + 奶白字；
+  浅色主题翻成暖纸白 `#f7f2e6` + 深字 `#26211a`。此前写的是"恒深色、不翻转"，
+  在浅色页面上那是一条突兀的黑压顶。
+- **玻璃系右键菜单**去掉写死的 `rgba(20,21,29,0.82)`，改从宿主层派生。
+- **减少动效的实色降级**去掉两段写死的深色渐变，改从 `--oq-canvas/--oq-surface` 派生
+  （此前一开"减少动效"就会变成两块黑板）。
+- **浅色分支补齐玻璃高光与投影**：亮底上白色高光几乎不可见、深色那套投影会发脏。
+
+#### Tests
+
+新增 `test/theme-adaptation.test.mjs`（5 条），锁住四条不变量：
+① 宿主变量派生必须命中 `body`，不能只写 `:root`；② 明暗信号必须是
+`body[data-ds-dark-theme]` 且不得出现 `prefers-color-scheme`；③ 浅色分支必须真的
+翻转 hero 带与热力色阶；④ 不得残留写死的深色外壳。另加一条守护哑光纸材质
+（它自带一套浅色语义变量，是浅色适配的另一半）。
+
+#### Docs
+
+`DESIGN.md` 新增 **The Body-Scoped Token Rule**，并把热力色阶的切换条件从
+`prefers-color-scheme` 更正为 `body:not([data-ds-dark-theme])`。
+
+### 修复：插件树重组后管理页报 `duplicate prefix route "/api/opencode"`（2026-11-09）
+
+#### 症状
+
+插件管理页显示「用量与额度小窗 (dsh-quota-widget) 异常 · 原因:
+webserver: duplicate prefix route "/api/opencode"」，但悬浮窗与用量统计都正常工作。
+
+#### 根因
+
+`apply()` 里 15 条 `webServer.register(...)` **全是裸调用**，没有一条包在
+`ctx.effect` 里，disposer 被直接丢弃。宿主卸载/重载插件时撤销不了这些路由，
+于是插件树每重组一次（装、卸、启停任一插件都会触发）`apply()` 就再跑一遍，
+第二次 `register` 撞上上一次留下的条目并抛错。
+
+抛错发生在 `apply()` 尾部的同步段，所以插件被判「加载失败」，但抛错前已经跑完的
+部分（`ctx.on("session/event")`、DB hydrate、`/api/token-meter` 那批注册）
+全部生效，**首次装载注册的 `/api/opencode` 路由也仍在服务** —— 这就是
+「报异常、功能正常」的来源。
+
+#### Changed
+
+- 新增 `registerRoute(spec)` 收口：注册一律经 `ctx.effect(() => webServer.register(spec))`，
+  卸载时由宿主撤销。文件里已无 15 条散落的裸 `webServer.register`。
+- duplicate 冲突降级为 warn（先注者胜），兜住进程里**修复前**遗下的条目
+  （只能重启清掉），不再让整个 `apply()` 失败、把插件打成异常。
+- 非 duplicate 的错误（如 `EADDRINUSE`）仍照常上抛，不掩盖真故障。
+
+#### Tests
+
+新增 `test/route-registration.test.mjs`（4 条）：首次 apply 注册满 15 条；
+未处置就二次 apply 不抛错且路由不翻倍；跑完 disposer 后重载路由恢复且**不走**
+duplicate 兜底（证明是 effect 真撤销，不是靠吞错蒙混）；非 duplicate 错误仍上抛。
+
 ### 用量查询：去掉内容区与 tab 重名的标题（2026-10-29）
 
 tab 已写「用量查询」，内容区顶部的 `groupHead("用量查询")` 又写一遍 ——
