@@ -1,17 +1,17 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>今日格纹理 · 已落地</title>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>斜纹 P=12</title>
 <style>
 body{margin:0;background:#0b0c0f;font-family:Inter,-apple-system,"Microsoft YaHei",sans-serif;color:#eceef6;padding:22px}
-.head{max-width:960px;margin:0 auto 14px}
+.head{max-width:980px;margin:0 auto 14px}
 h1{font-size:17px;margin:0 0 5px;font-weight:650}
 p{margin:0;font-size:11.5px;line-height:1.75;color:#9b9dae}
-code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;background:#1b1e25;padding:1px 5px;border-radius:3px;color:#b9b0ff}
-.wrap{max-width:960px;margin:0 auto;display:flex;gap:16px;flex-wrap:wrap}
+code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;background:#1b1e25;padding:1px 5px;border-radius:3px;color:#e8a184}
+.wrap{max-width:980px;margin:0 auto;display:flex;gap:16px;flex-wrap:wrap}
 .cellp{display:flex;flex-direction:column;gap:7px}
 .cap{font-size:9.5px;color:#6d7080;font-family:ui-monospace,monospace}
 .panel{width:452px;padding:14px;border-radius:12px;background:var(--oq-canvas);border:1px solid var(--oq-hairline)}
 .sec{font-size:9.5px;color:var(--oq-faint);margin-bottom:9px}
 .hg{display:flex;gap:3px;flex-wrap:wrap}
-.hg .oq-heat-cell{width:16px;height:16px;flex:none}
+.hg .oq-heat-cell{width:17px;height:17px;flex:none}
 .hz{display:flex;gap:7px;align-items:flex-end}
 .one{display:flex;flex-direction:column;align-items:center;gap:5px}
 .one span{font-size:8px;color:var(--oq-faint);font-family:monospace}
@@ -259,12 +259,12 @@ code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;background:#1b
 .oq-heat-cell.oh-clickable{cursor:pointer}
 .oq-heat-cell.oh-clickable:hover{filter:brightness(1.12)}
 .oq-heat-cell.oh-future{background:repeating-linear-gradient(45deg,rgba(154,154,170,0.30) 0 2px,rgba(154,154,170,0.06) 2px 5px)}
-.oq-heat-cell.oh-today::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(45deg,rgba(20,15,45,0.55) 0 1px,transparent 1px 2.5px,rgba(255,255,255,0.55) 2.5px 3.5px,transparent 3.5px 5px);opacity:.55;animation:oq-breathe-tex 3s ease-in-out infinite}
-@keyframes oq-breathe-tex{0%,100%{opacity:.55}50%{opacity:.95}}
+.oq-heat-cell.oh-today::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(45deg,rgba(20,15,45,0.55) 0 1px,transparent 1px 5px,rgba(255,255,255,0.55) 5px 6px,transparent 6px 12px);opacity:.50;animation:oq-breathe-tex 3s ease-in-out infinite}
+@keyframes oq-breathe-tex{0%,100%{opacity:.50}50%{opacity:.82}}
 .oq-heat-cell.oh-el{transform-origin:left center}
 .oq-heat-cell.oh-er{transform-origin:right center}
 .oq-heat-cell.oh-el:hover,.oq-heat-cell.oh-er:hover{box-shadow:inset 0 1px 0 rgba(255,255,255,0.30),inset 0 -1px 1px rgba(0,0,0,0.30),inset 0 0 0 1px rgba(255,255,255,0.55),0 2px 8px rgba(0,0,0,0.50)}
-@media (prefers-reduced-motion:reduce){.oq-heat-cell.oh-today::after{animation:none;opacity:.75}}
+@media (prefers-reduced-motion:reduce){.oq-heat-cell.oh-today::after{animation:none;opacity:.66}}
 .oq-tip,.oq-heat-tip{position:fixed;z-index:1002;pointer-events:none;opacity:0;background:var(--dsw-alias-bg-layer-2,#1e1e28);border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,0.1));border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.45);padding:8px 10px;font-size:10px;line-height:1.5;color:var(--oq-ink,#fff);min-width:132px;max-width:260px}
 .oq-tip .tt-head,.oq-heat-tip .tt-head{font-size:9px;color:var(--oq-faint,#9a9aaa);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .oq-tip .tt-main,.oq-heat-tip .tt-main{font-size:14px;font-weight:750;margin-bottom:4px;white-space:nowrap}
@@ -325,36 +325,29 @@ code{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;background:#1b
  --bmon-h0:#ece4d1;--bmon-h1:#d9d4f0;--bmon-h2:#c1b8e6;--bmon-h3:#a699d8;
  --bmon-h4:#8a79c6;--bmon-h5:#7059b0;--bmon-h6:#574194}
 </style></head><body>
-<div class="head"><h1>今日格 · 内填充双色斜纹（已落地）</h1>
-<p>不再画描边，改用格子内部纹理。纹理与颜色无关，<b>7 档全可见</b>（深色主题最小 CR 2.54、浅色 2.52），
-也不占外扩空间、不破坏圆角。呼吸靠纹理透明度 0.55↔0.95 往复，<b>不会让格子看起来变胖</b>。
-<code>lib/client.js</code> 真实 CSS，含 <code>.oq-hm-lg</code> 大尺寸档。</p></div>
-<div class="wrap">
-  <div class="cellp"><span class="cap">深色</span>
+<div class="head"><h1>今日格斜纹 · 周期已从 5px 放到 12px</h1>
+<p>原来 8px 高的格子里两条 1px 线把整格铺满（覆盖率 100%），所以显得"花"。
+现在 <code>P=12px</code>，覆盖率 22%，8px 内约 0.94 条线 —— 刚好一道斜纹。
+呼吸幅度也从 0.55↔0.95 收到 <code>0.50↔0.82</code>，不再闪。真实 <code>lib/client.js</code> CSS。</p></div>
+<div class="wrap"><div class="cellp"><span class="cap">深色</span>
   <div class="panel" data-dsw="dark">
-    <div class="sec">整月视图（第 6/13/18 格是「今日」）</div>
-    <div class="hg"><div class="oq-heat-cell oh0"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh1 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh0"></div><div class="oq-heat-cell oh2 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh1"></div><div class="oq-heat-cell oh6 oh-today"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh5"></div></div>
-    <div class="sec" style="margin-top:14px">7 档 + 今日（最后一格）</div>
+    <div class="sec">整月（第 6/13/20 格 = 今日）</div>
+    <div class="hg"><div class="oq-heat-cell oh0"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh1 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh0"></div><div class="oq-heat-cell oh2 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh1"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh3 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh1"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh3"></div></div>
+    <div class="sec" style="margin-top:15px">7 档 + 今日 · 真实 8px</div>
     <div class="hz"><div class="one"><div class="oq-heat-cell oh0"></div><span>h0</span></div><div class="one"><div class="oq-heat-cell oh1"></div><span>h1</span></div><div class="one"><div class="oq-heat-cell oh2"></div><span>h2</span></div><div class="one"><div class="oq-heat-cell oh3"></div><span>h3</span></div><div class="one"><div class="oq-heat-cell oh4"></div><span>h4</span></div><div class="one"><div class="oq-heat-cell oh5"></div><span>h5</span></div><div class="one"><div class="oq-heat-cell oh6"></div><span>h6</span></div>
-      <div class="one"><div class="oq-heat-cell oh3 oh-today"></div><span>今日</span></div>
-    </div>
-    <div class="sec" style="margin-top:14px">大尺寸（.oq-hm-lg，20px 高）</div>
+      <div class="one"><div class="oq-heat-cell oh3 oh-today"></div><span>今日</span></div></div>
+    <div class="sec" style="margin-top:15px">大尺寸 .oq-hm-lg · 20px</div>
     <div class="oq-hm-lg hz"><div class="one"><div class="oq-heat-cell oh0"></div><span>h0</span></div><div class="one"><div class="oq-heat-cell oh1"></div><span>h1</span></div><div class="one"><div class="oq-heat-cell oh2"></div><span>h2</span></div><div class="one"><div class="oq-heat-cell oh3"></div><span>h3</span></div><div class="one"><div class="oq-heat-cell oh4"></div><span>h4</span></div><div class="one"><div class="oq-heat-cell oh5"></div><span>h5</span></div><div class="one"><div class="oq-heat-cell oh6"></div><span>h6</span></div>
-      <div class="one"><div class="oq-heat-cell oh3 oh-today"></div><span>今日</span></div>
-    </div>
-  </div></div>
-  <div class="cellp"><span class="cap">浅色</span>
+      <div class="one"><div class="oq-heat-cell oh3 oh-today"></div><span>今日</span></div></div>
+  </div></div><div class="cellp"><span class="cap">浅色</span>
   <div class="panel" data-dsw="light">
-    <div class="sec">整月视图（第 6/13/18 格是「今日」）</div>
-    <div class="hg"><div class="oq-heat-cell oh0"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh1 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh0"></div><div class="oq-heat-cell oh2 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh1"></div><div class="oq-heat-cell oh6 oh-today"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh5"></div></div>
-    <div class="sec" style="margin-top:14px">7 档 + 今日（最后一格）</div>
+    <div class="sec">整月（第 6/13/20 格 = 今日）</div>
+    <div class="hg"><div class="oq-heat-cell oh0"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh1 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh0"></div><div class="oq-heat-cell oh2 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh3"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh1"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh3 oh-today"></div><div class="oq-heat-cell oh5"></div><div class="oq-heat-cell oh4"></div><div class="oq-heat-cell oh1"></div><div class="oq-heat-cell oh2"></div><div class="oq-heat-cell oh6"></div><div class="oq-heat-cell oh3"></div></div>
+    <div class="sec" style="margin-top:15px">7 档 + 今日 · 真实 8px</div>
     <div class="hz"><div class="one"><div class="oq-heat-cell oh0"></div><span>h0</span></div><div class="one"><div class="oq-heat-cell oh1"></div><span>h1</span></div><div class="one"><div class="oq-heat-cell oh2"></div><span>h2</span></div><div class="one"><div class="oq-heat-cell oh3"></div><span>h3</span></div><div class="one"><div class="oq-heat-cell oh4"></div><span>h4</span></div><div class="one"><div class="oq-heat-cell oh5"></div><span>h5</span></div><div class="one"><div class="oq-heat-cell oh6"></div><span>h6</span></div>
-      <div class="one"><div class="oq-heat-cell oh3 oh-today"></div><span>今日</span></div>
-    </div>
-    <div class="sec" style="margin-top:14px">大尺寸（.oq-hm-lg，20px 高）</div>
+      <div class="one"><div class="oq-heat-cell oh3 oh-today"></div><span>今日</span></div></div>
+    <div class="sec" style="margin-top:15px">大尺寸 .oq-hm-lg · 20px</div>
     <div class="oq-hm-lg hz"><div class="one"><div class="oq-heat-cell oh0"></div><span>h0</span></div><div class="one"><div class="oq-heat-cell oh1"></div><span>h1</span></div><div class="one"><div class="oq-heat-cell oh2"></div><span>h2</span></div><div class="one"><div class="oq-heat-cell oh3"></div><span>h3</span></div><div class="one"><div class="oq-heat-cell oh4"></div><span>h4</span></div><div class="one"><div class="oq-heat-cell oh5"></div><span>h5</span></div><div class="one"><div class="oq-heat-cell oh6"></div><span>h6</span></div>
-      <div class="one"><div class="oq-heat-cell oh3 oh-today"></div><span>今日</span></div>
-    </div>
-  </div></div>
-</div>
+      <div class="one"><div class="oq-heat-cell oh3 oh-today"></div><span>今日</span></div></div>
+  </div></div></div>
 </body></html>
