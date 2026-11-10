@@ -220,6 +220,8 @@ components:
 
 **The Body-Scoped Token Rule.** 整套 `--oq-*` 派生必须声明在 `body` 上，不能挂 `:root`。宿主的 `--dsw-alias-*` 定义在 `<body>`（`body[data-ds-dark-theme]` 切深浅），而自定义属性在**声明处**求值：挂在 `:root` 上时 `var(--dsw-alias-*, 兜底)` 在 `<html>` 那层取不到 body 的值，全部退回兜底 —— 浅色皮肤下插件整体仍是深色就是这条错的。`:root` 只保留一份纯兜底（宿主变量缺失时仍有颜色）。明暗信号一律用 `body[data-ds-dark-theme]`，**不用** `prefers-color-scheme`（那是操作系统偏好，与 DSH 主题可不同步）。见 `lib/client.js` 的令牌层与 `test/theme-adaptation.test.mjs`。
 
+**The Two-Tier Surface Rule.** 小面片（胶囊、徽标）必须与它所在的容器**至少差一档**，且这一档要在两套主题下都成立。判定方法不是看颜色值，而是问："深色下它靠变亮、浅色下靠变暗，还是两边都同色？" 只用 `bg-layer-1` vs `bg-layer-2` 这种"换一档变量"的做法在深色主题成立、浅色主题失效（`#242433` vs `#1a1a1f` 差得开，`#f6f2ea` vs `rgba(255,253,246,.94)` 差不开）。正确写法是与 `label-primary` 做 `color-mix`：深色 label 是白 → 提亮，浅色 label 是深 → 压深，同一表达式自动换向。描边用 `border-l2` 而非 `border-l1`（后者 10% 的强度兜不住浅色下的低对比）。见 `--oq-pill-bg` / `--oq-pill-line`。
+
 ## Typography
 
 **Display Font:** inherit（跟随 DSH 宿主的无衬线栈）

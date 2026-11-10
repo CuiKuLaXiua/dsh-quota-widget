@@ -10,13 +10,17 @@
 //   于是 var(--dsw-alias-bg-layer-2, #1a1a1f) 在 <html> 那层求值时 body 的值
 //   还不存在 → 每个 color-mix 都退回写死的深色兜底 → 浅色下整页仍是黑的。
 //
-// 本文件锁住四条不变量（前三条是这次修的，第四条防回归）：
+// 本文件锁住六条不变量：
 //   ① 宿主变量派生必须命中 body，不能只写 :root；
 //   ② 浅色覆盖挂在 body:not([data-ds-dark-theme])，不用 prefers-color-scheme；
 //   ③ 浅色分支必须真的翻转 hero 带与热力色阶；
-//   ④ 不得残留写死的深色外壳（菜单、减少动效降级）。
+//   ④ 不得残留写死的深色外壳（菜单、减少动效降级）；
+//   ⑤ 胶囊/徽标必须有独立的底与描边令牌（2026-11-09 第二轮反馈：
+//      浅色下底部「轮次/步数/工具/请求/速度」胶囊完全看不见）；
+//   ⑥ 纸张材质仍自带一套浅色语义变量。
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { loadClientTesting } from "./load-client.mjs";
 
@@ -104,5 +108,58 @@ test("纸张材质仍自带浅色语义变量（不依赖宿主主题）", () =>
   assert.ok(
     paper[0].includes("--bmon-h0:"),
     "纸张材质必须自带一套浅色热力阶",
+  );
+});
+
+// ── 2026-11-09 第二轮反馈：浅色下底部胶囊（轮次/步数/工具/请求/速度）看不见 ──
+//
+// 症状：只有深色模式能看到胶囊轮廓，浅色下完全消失。
+// 根因：胶囊底用 --oq-surface（← bg-layer-1），而它所在的 .oq-tm-tile 用
+//   --oq-canvas（← bg-layer-2）。深色下 layer-1 比 layer-2 亮一档 ⇒ 轮廓成立；
+//   浅色下两者几乎同色（#f6f2ea vs 半透明 #fffdf6），描边又只有 10% 黑 ⇒ 消失。
+
+test("胶囊必须有独立的底/描边令牌，且由 color-mix 自动换向", () => {
+  // 底：必须由 color-mix 从宿主色派生（深色提亮 / 浅色压深）
+  assert.ok(
+    /--oq-pill-bg:color-mix\(in oklab/.test(css),
+    "--oq-pill-bg 必须由 color-mix 从宿主色派生（深色提亮 / 浅色压深）",
+  );
+  // 描边：用宿主 border-l2（比 l1 深一档）。不能用「带 alpha 的色 + 不透明色
+  // 做 color-mix」——那会把 alpha 抬到 50% 上下，深色主题凭空多一条亮白线。
+  assert.ok(
+    /--oq-pill-line:var\(--dsw-alias-border-l2/.test(css),
+    "--oq-pill-line 应取宿主 border-l2（两套主题都比 l1 深一档）",
+  );
+});
+
+test("胶囊不得回退到与卡片同色的 --oq-surface", () => {
+  const src = readFileSync(new URL("../lib/client.js", import.meta.url), "utf-8");
+
+  // _pill 与 gwReqPill 两处都必须用 --oq-pill-bg
+  assert.ok(
+    /background:"var\(--oq-pill-bg/.test(src),
+    "_pill 的底必须是 var(--oq-pill-bg)", 
+  );
+  // 旧写法：background:"var(--oq-surface,#242433)" —— 浅色下与 tile 同色
+  const legacyPill = src.match(/borderRadius:"999px",background:"var\(--oq-surface/g);
+  assert.equal(
+    legacyPill,
+    null,
+    "不得再用 --oq-surface 作胶囊底（浅色下与 .oq-tm-tile 同色 ⇒ 胶囊消失）",
+  );
+
+  // gwReqPill 是 _pill 的手工复刻，容易漏改，单独断言
+  assert.ok(
+    (src.match(/var\(--oq-pill-bg/g) || []).length >= 2,
+    "_pill 与 gwReqPill 两处都要用 --oq-pill-bg（后者是前者的手工复刻）",
+  );
+});
+
+test("徽标复用胶囊底，浅色下不会只剩飘着的文字", () => {
+  const badge = css.match(/\.oq-badge\{[^}]*\}/);
+  assert.ok(badge, "应存在 .oq-badge 规则");
+  assert.ok(
+    badge[0].includes("--oq-pill-bg"),
+    ".oq-badge 应复用 --oq-pill-bg（网关 1.6M 那类徽标在浅色下也需要轮廓）",
   );
 });
